@@ -1,5 +1,14 @@
 import streamlit as st
-import cv2
+import sys
+import subprocess
+
+# Auto-install pengaman modul OpenCV headless untuk lingkungan Cloud
+try:
+    import cv2
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+    import cv2
+
 import numpy as np
 import os
 from PIL import Image
