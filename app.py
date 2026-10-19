@@ -1,14 +1,4 @@
 import streamlit as st
-import sys
-import subprocess
-
-# Auto-install pengaman modul OpenCV headless untuk lingkungan Cloud
-try:
-    import cv2
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
-    import cv2
-
 import numpy as np
 import os
 from PIL import Image
@@ -23,6 +13,9 @@ st.set_page_config(
     page_icon="🛣️",
     layout="wide"
 )
+
+# Impor cv2 ditaruh di sini setelah pustaka dasar aman
+import cv2
 
 # Judul Utama Dashboard
 st.title("🛣️ Dashboard Cerdas Pemantauan & Analisis Kerusakan Perkerasan Jalan")
@@ -69,7 +62,7 @@ def load_model(choice):
 with st.spinner("Memuat model ke memori..."):
     model = load_model(model_type)
 
-# --- FUNGSI INTEGRATED GRAD-CAM (TRIPTYCH GENERATOR UNTUK GAMBAR - TIDAK DIRUBAH) ---
+# --- FUNGSI INTEGRATED GRAD-CAM (TRIPTYCH GENERATOR) ---
 def generate_integrated_gradcam_triptych(image_pil, results):
     img_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
     h, w, _ = img_cv.shape
@@ -93,7 +86,7 @@ def generate_integrated_gradcam_triptych(image_pil, results):
     return panel1, panel2, panel3
 
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD AMAN & TIDAK BERUBAH) ---
+# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -153,7 +146,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
         st.info("👈 Silakan unggah satu atau beberapa file gambar sekaligus melalui panel **sidebar di sebelah kiri**.")
 
 # =========================================================================
-# --- MENU 2: STUDIO PEMANTAUAN VIDEO (DENGAN LATENSI & FIX BUG RENDER) ---
+# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE) ---
 # =========================================================================
 elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     if uploaded_video is not None:
@@ -183,7 +176,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 duration = frame_count / fps if fps > 0 else 0
 
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Menggunakan mp4v agar stabil di web
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
                 progress_bar = st.progress(0)
@@ -235,7 +228,6 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
                 with c_vid2:
                     if os.path.exists(output_path):
-                        # Memutar ulang video hasil render dengan aman
                         video_file_read = open(output_path, 'rb')
                         video_bytes = video_file_read.read()
                         output_video_placeholder.video(video_bytes)
@@ -289,11 +281,11 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
 
 # =========================================================================
-# --- MENU 3: KAMERA / LIVE STREAMING (DENGAN PROTEKSI CLOUD) ---
+# --- MENU 3: KAMERA / LIVE STREAMING ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
     st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time CCTV")
-    st.info("💡 Catatan: Fitur Live Streaming memerlukan akses perangkat keras kamera fisik lokal (Webcam). Jika dijalankan di server cloud Google Colab, pastikan perangkat mendukung atau gunakan simulasi video.")
+    st.info("💡 Catatan: Fitur Live Streaming memerlukan akses perangkat keras kamera fisik lokal (Webcam).")
     
     run_cam = st.checkbox("Aktifkan Live Stream Studio")
     
@@ -304,14 +296,13 @@ elif input_type == "Kamera / Live Streaming (Real-Time)":
         cap = cv2.VideoCapture(0)
         
         if not cap.isOpened():
-            st.error("❌ Gagal mengakses kamera perangkat. Harap gunakan menu Studio Pemantauan Video untuk pengujian file rekaman.")
+            st.error("❌ Gagal mengakses kamera perangkat. Harap gunakan menu Studio Pemantauan Video.")
         else:
             while run_cam and cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
-                    st.warning("⚠️ Aliran bingkai kamera terputus.")
                     break
-                    
+                
                 t_start = time.time()
                 results = model(frame, conf=conf_threshold, verbose=False)
                 t_end = time.time()
@@ -328,7 +319,7 @@ elif input_type == "Kamera / Live Streaming (Real-Time)":
                     metric_placeholder.info(f"🔴 Live Status: Terdeteksi {len(boxes)} objek ({', '.join(set(detected_labels))}) | Latensi: {lat:.1f} ms")
                 else:
                     metric_placeholder.success(f"🟢 Live Status: Permukaan jalan aman / nihil kerusakan | Latensi: {lat:.1f} ms")
-                    
+                
                 time.sleep(0.03)
                 
             cap.release()
