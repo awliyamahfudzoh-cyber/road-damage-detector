@@ -175,8 +175,8 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 duration = frame_count / fps if fps > 0 else 0
 
-                output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.avi').name
-                fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
                 progress_bar = st.progress(0)
@@ -227,10 +227,10 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 avg_latency = sum(inference_times_list) / len(inference_times_list) if inference_times_list else 0
 
                 with c_vid2:
-                    if os.path.exists(output_path):
-                        video_file_read = open(output_path, 'rb')
-                        video_bytes = video_file_read.read()
-                        output_video_placeholder.video(video_bytes)
+                if os.path.exists(output_path):
+                    with open(output_path, 'rb') as f:
+                        video_bytes = f.read()
+                    output_video_placeholder.video(video_bytes, format='video/mp4', start_time=0)
 
                 st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
