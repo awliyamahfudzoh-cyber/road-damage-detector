@@ -20,7 +20,7 @@ import cv2
 # Judul Utama Dashboard
 st.title("🛣️ Dashboard Cerdas Pemantauan & Analisis Kerusakan Perkerasan Jalan")
 st.markdown("""
-*Sistem Deteksi Real-Time Berbasis YOLOv10 (FP32 vs OpenVINO INT8) dengan Analisis Latensi, Studio Linimasa, dan Multi-Upload.*
+*Sistem Deteksi Real-Time Berbasis YOLOv10 (FP32 vs OpenVINO INT8).*
 """)
 
 # Sidebar untuk Konfigurasi Model dan Input
@@ -175,8 +175,8 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 duration = frame_count / fps if fps > 0 else 0
 
-                output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
+                fourcc = cv2.VideoWriter_fourcc(*'VP80')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
                 progress_bar = st.progress(0)
@@ -230,8 +230,8 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     if os.path.exists(output_path):
                         with open(output_path, 'rb') as f:
                             video_bytes = f.read()
-                        output_video_placeholder.video(video_bytes, format='video/mp4', start_time=0)
-
+                        output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
+                        
                 st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
                 
@@ -284,7 +284,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 # --- MENU 3: KAMERA / LIVE STREAMING ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
-    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time CCTV")
+    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time")
     st.info("💡 Catatan: Fitur Live Streaming memerlukan akses perangkat keras kamera fisik lokal (Webcam).")
     
     run_cam = st.checkbox("Aktifkan Live Stream Studio")
