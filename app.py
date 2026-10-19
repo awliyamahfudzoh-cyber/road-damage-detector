@@ -227,10 +227,10 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 avg_latency = sum(inference_times_list) / len(inference_times_list) if inference_times_list else 0
 
                 with c_vid2:
-                if os.path.exists(output_path):
-                    with open(output_path, 'rb') as f:
-                        video_bytes = f.read()
-                    output_video_placeholder.video(video_bytes, format='video/mp4', start_time=0)
+                    if os.path.exists(output_path):
+                        with open(output_path, 'rb') as f:
+                            video_bytes = f.read()
+                        output_video_placeholder.video(video_bytes, format='video/mp4', start_time=0)
 
                 st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
