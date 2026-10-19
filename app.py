@@ -49,8 +49,8 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     uploaded_video = st.sidebar.file_uploader("Pilih file video (.mp4, .avi, .mov)", type=["mp4", "avi", "mov"])
 
 # Path Model
-path_fp32 = '/content/drive/MyDrive/dataset_road_damage/runs_training/yolov10s_road_damage_optimized-2/weights/best.pt'
-path_int8 = '/content/drive/MyDrive/dataset_road_damage/runs_training/yolov10s_road_damage_optimized-2/weights/best_int8_openvino_model'
+path_fp32 = 'best.pt'
+path_int8 = 'best_int8_openvino_model'
 
 @st.cache_resource
 def load_model(choice):
