@@ -1,0 +1,27 @@
+description: Ultralytics YOLOv10s model trained on /content/drive/MyDrive/dataset_road_damage/data.yaml
+author: Ultralytics
+date: '2026-10-16T20:07:21.602069+00:00'
+version: 8.4.178
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+head: v10Detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: alligator cracking
+  1: lateral cracking
+  2: longitudinal cracking
+  3: pothole
+args:
+  data: /content/drive/MyDrive/dataset_road_damage/data.yaml
+  batch: 1
+  fraction: 1.0
+  quantize: 8
+  nms: null
+  dynamic: false
+channels: 3
+end2end: false
