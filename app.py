@@ -176,8 +176,13 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 duration = frame_count / fps if fps > 0 else 0
 
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                # Menggunakan H264 atau avc1 agar video hasil render langsung bisa diputar di browser web
+                fourcc = cv2.VideoWriter_fourcc(*'H264') 
+                # Jika di server cloud tertentu codec H264 tidak didukung, kita sediakan fallback ke mp4v
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+                if not out.isOpened():
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
                 progress_bar = st.progress(0)
                 snapshots_data = []
