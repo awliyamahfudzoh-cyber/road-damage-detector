@@ -107,7 +107,7 @@ class PDFReport(FPDF):
 
 
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & PDF TRIPTYCH) ---
+# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -127,44 +127,34 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-                if boxes is not None and len(boxes) > 0:
-                    #jalankan XAI untuk semua jenis model (FP32 & INT8)
-                    p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-                    tcol1, tcol2, tcol3 = st.columns(3)
-                    with tcol1:
-                        st.image(p1, channels="BGR", use_container_width=True)
-                        st.caption("1️⃣ Citra Asli & Bounding Box")
-                    with tcol2:
-                        st.image(p2, channels="BGR", use_container_width=True)
-                        st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
-                    with tcol3:
-                        st.image(p3, channels="BGR", use_container_width=True)
-                        st.caption("3️⃣ Overlay Integrated Grad-CAM")
-                    
-                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    cv2.imwrite(p1_path, p1)
-                    cv2.imwrite(p2_path, p2)
-                    cv2.imwrite(p3_path, p3)
-                    
-                    saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
-                else:
-                    res_plotted = results[0].plot()
-                    col_single, _ = st.columns([2, 1])
-                    with col_single:
-                        st.image(res_plotted, channels="BGR", use_container_width=True)
-                    
-                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    cv2.imwrite(p1_path, res_plotted)
-                    saved_paths = {"p1": p1_path, "p2": None, "p3": None}
+            if boxes is not None and len(boxes) > 0:
+                # XAI Triptych diaktifkan untuk SEMUA model (FP32 & INT8)
+                p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+                tcol1, tcol2, tcol3 = st.columns(3)
+                with tcol1:
+                    st.image(p1, channels="BGR", use_container_width=True)
+                    st.caption("1️⃣ Citra Asli & Bounding Box")
+                with tcol2:
+                    st.image(p2, channels="BGR", use_container_width=True)
+                    st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
+                with tcol3:
+                    st.image(p3, channels="BGR", use_container_width=True)
+                    st.caption("3️⃣ Overlay Integrated Grad-CAM")
+                
+                p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                cv2.imwrite(p1_path, p1)
+                cv2.imwrite(p2_path, p2)
+                cv2.imwrite(p3_path, p3)
+                
+                saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
 
                 st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
 
                 class_names = results[0].names
                 box_data = boxes.data.cpu().numpy() # [x1, y1, x2, y2, conf, cls]
                 
-                # Mengelompokkan berdasarkan kelas
                 class_stats = {}
                 for box in box_data:
                     cls_id = int(box[5])
@@ -174,12 +164,8 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                         class_stats[cname] = []
                     class_stats[cname].append(conf)
                 
-                damage_summary_str = []
                 total_units = len(boxes)
                 avg_conf_all = sum([float(b[4]) for b in box_data]) / total_units if total_units > 0 else 0
-                
-                for cname, confs in class_stats.items():
-                    damage_summary_str.append(f"{cname} ({len(confs)} unit)")
 
                 global_summary.append({
                     "Filename": uploaded_file.name, 
@@ -205,7 +191,6 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 pdf.set_font('helvetica', 'B', 10)
                 pdf.cell(0, 6, '1. Tabel Ringkasan Deteksi Data Valid', 0, 1, 'L')
                 
-                # Menambahkan Kolom Confidence & Jumlah Unit
                 pdf.set_font('helvetica', 'B', 9)
                 pdf.set_fill_color(230, 230, 230)
                 pdf.cell(60, 6, 'Nama Berkas', 1, 0, 'C', True)
@@ -249,7 +234,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                             pdf.ln(4)
                 
                 return bytes(pdf.output())
-               
+
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
                 label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Triptych 3 Kolom)",
@@ -259,7 +244,6 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             )
     else:
         st.info("👈 Silakan unggah satu atau beberapa file gambar jalan melalui panel **sidebar di sebelah kiri**.")
-
 
 # =========================================================================
 # --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
