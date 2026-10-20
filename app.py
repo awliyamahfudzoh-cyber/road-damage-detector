@@ -107,7 +107,7 @@ class PDFReport(FPDF):
 
 
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & PDF) ---
+# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -128,6 +128,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             boxes = results[0].boxes
             
             if boxes is not None and len(boxes) > 0:
+                # Menentukan gambar yang akan disimpan (XAI untuk FP32, Standard Plot untuk INT8)
                 if "FP32" in model_type:
                     p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
                     tcol1, tcol2, tcol3 = st.columns(3)
@@ -140,18 +141,23 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     with tcol3:
                         st.image(p3, channels="BGR", use_container_width=True)
                         st.caption("3️⃣ Overlay Integrated Grad-CAM")
+                    
+                    # Simpan Panel 3 (Overlay Grad-CAM) untuk laporan PDF
+                    target_img_to_save = p3
                 else:
                     res_plotted = results[0].plot()
                     col_single, _ = st.columns([2, 1])
                     with col_single:
                         st.image(res_plotted, channels="BGR", use_container_width=True)
+                    
+                    # Simpan hasil plot standar untuk laporan PDF
+                    target_img_to_save = res_plotted
 
                 st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
 
                 class_names = results[0].names
-                res_plotted_img = results[0].plot()
                 img_temp_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                cv2.imwrite(img_temp_path, res_plotted_img)
+                cv2.imwrite(img_temp_path, target_img_to_save)
 
                 for c in boxes.cls:
                     cname = class_names[int(c)]
@@ -176,34 +182,40 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 pdf.set_font('helvetica', 'B', 10)
                 pdf.cell(0, 6, '1. Tabel Ringkasan Deteksi Data Valid', 0, 1, 'L')
                 
+                # Perbaikan Lebar Kolom Tabel agar rapi & tidak menabrak
                 pdf.set_font('helvetica', 'B', 9)
                 pdf.set_fill_color(230, 230, 230)
-                pdf.cell(70, 6, 'Nama Berkas', 1, 0, 'C', True)
-                pdf.cell(60, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
+                pdf.cell(85, 6, 'Nama Berkas', 1, 0, 'C', True)
+                pdf.cell(55, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
                 pdf.cell(50, 6, 'Latensi (ms)', 1, 1, 'C', True)
                 
-                pdf.set_font('helvetica', '', 9)
+                pdf.set_font('helvetica', '', 8) # Ukuran font dikecilkan sedikit agar nama file panjang muat
                 for item in summary_data:
-                    pdf.cell(70, 6, str(item['Filename']), 1, 0, 'L')
-                    pdf.cell(60, 6, str(item['Damage Type']), 1, 0, 'L')
+                    # Memotong nama file jika terlalu panjang agar pas di dalam sel tabel PDF
+                    display_filename = item['Filename'] if len(item['Filename']) <= 45 else item['Filename'][:42] + "..."
+                    pdf.cell(85, 6, str(display_filename), 1, 0, 'L')
+                    pdf.cell(55, 6, str(item['Damage Type']), 1, 0, 'L')
                     pdf.cell(50, 6, str(item['Inference Time (ms)']), 1, 1, 'C')
                 
                 pdf.ln(6)
                 pdf.set_font('helvetica', 'B', 10)
-                pdf.cell(0, 6, '2. Lampiran Visual Bukti Anotasi', 0, 1, 'L')
+                
+                # Judul lampiran menyesuaikan apakah menggunakan XAI atau Standard
+                lampiran_title = '2. Lampiran Visual Bukti Anotasi & XAI (Integrated Grad-CAM)' if "FP32" in model_type else '2. Lampiran Visual Bukti Anotasi Bounding Box'
+                pdf.cell(0, 6, lampiran_title, 0, 1, 'L')
                 
                 for item in summary_data:
                     if os.path.exists(item['Saved Image Path']):
                         pdf.set_font('helvetica', 'I', 8)
                         pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']}", 0, 1, 'L')
-                        pdf.image(item['Saved Image Path'], w=70)
+                        pdf.image(item['Saved Image Path'], w=90) # Lebar gambar diperbesar agar jelas
                         pdf.ln(4)
                 
                 return bytes(pdf.output())
 
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
-                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Gambar)",
+                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Gambar XAI)",
                 data=pdf_bytes,
                 file_name="Laporan_Analisis_Citra_Jalan.pdf",
                 mime="application/pdf",
