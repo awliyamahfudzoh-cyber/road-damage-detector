@@ -281,65 +281,34 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
 
 # =========================================================================
-# --- MENU 3: KAMERA / LIVE STREAMING (REAL-TIME) ---
+# --- MENU 3: KAMERA / LIVE STREAMING (REAL-TIME WEBRTC VIDEO) ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
-    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time")
-    st.info("💡 Catatan: Fitur Live Streaming memerlukan akses perangkat keras kamera fisik lokal (Webcam).")
+    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time (WebRTC)")
+    st.info("💡 Fitur ini mengalirkan video langsung dari webcam perangkat Anda dan memprosesnya secara *real-time* per *frame* menggunakan YOLOv10.")
     
-    # Menggunakan st.toggle atau st.button untuk kontrol siklus hidup streaming yang lebih stabil
-    if "streaming_active" not in st.session_state:
-        st.session_state.streaming_active = False
+    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+    import av
 
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        start_stream = st.button("▶️ Mulai Live Stream")
-    with col_btn2:
-        stop_stream = st.button("⏹️ Hentikan Live Stream")
+    # Kelas Transformator untuk memproses setiap frame video secara real-time
+    class YOLOVideoTransformer(VideoTransformerBase):
+        def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+            # Konversi frame WebRTC ke array numpy (format BGR OpenCV)
+            img = frame.to_ndarray(format="bgr24")
+            
+            # Jalankan inferensi model YOLO
+            results = model(img, conf=conf_threshold, verbose=False)
+            
+            # Ambil frame yang sudah dianotasi bounding box
+            annotated_img = results[0].plot()
+            
+            # Kembalikan ke format video frame untuk dirender kembali ke browser
+            return av.VideoFrame.from_ndarray(annotated_img, format="bgr24")
 
-    if start_stream:
-        st.session_state.streaming_active = True
-    if stop_stream:
-        st.session_state.streaming_active = False
-
-    if st.session_state.streaming_active:
-        camera_placeholder = st.empty()
-        metric_placeholder = st.empty()
-        
-        cap = cv2.VideoCapture(0)
-        
-        if not cap.isOpened():
-            st.error("❌ Gagal mengakses kamera perangkat. Pastikan webcam tidak sedang digunakan aplikasi lain.")
-            st.session_state.streaming_active = False
-        else:
-            try:
-                while st.session_state.streaming_active:
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.warning("⚠️ Gagal membaca bingkai dari kamera.")
-                        break
-                    
-                    t_start = time.time()
-                    results = model(frame, conf=conf_threshold, verbose=False)
-                    t_end = time.time()
-                    lat = (t_end - t_start) * 1000
-                    
-                    annotated_frame = results[0].plot()
-                    rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                    camera_placeholder.image(rgb_frame, channels="RGB", use_container_width=True)
-                    
-                    boxes = results[0].boxes
-                    if boxes is not None and len(boxes) > 0:
-                        class_names = results[0].names
-                        detected_labels = [class_names[int(c)] for c in boxes.cls]
-                        metric_placeholder.info(f"🔴 Live Status: Terdeteksi {len(boxes)} objek ({', '.join(set(detected_labels))}) | Latensi: {lat:.1f} ms")
-                    else:
-                        metric_placeholder.success(f"🟢 Live Status: Permukaan jalan aman / nihil kerusakan | Latensi: {lat:.1f} ms")
-                    
-                    # Berikan jeda kecil agar UI Streamlit tidak mengalami overload
-                    time.sleep(0.01)
-            finally:
-                cap.release()
-                st.rerun()
-    else:
-        st.info("💡 Klik tombol **'▶️ Mulai Live Stream'** di atas untuk memulai pemantauan langsung.")
+    # Jalankan komponen WebRTC Streamer di antarmuka Streamlit
+    webrtc_streamer(
+        key="road-damage-stream",
+        video_transformer_factory=YOLOVideoTransformer,
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        media_stream_constraints={"video": True, "audio": False}
+    )
