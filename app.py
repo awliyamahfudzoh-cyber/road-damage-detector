@@ -86,7 +86,7 @@ def generate_integrated_gradcam_triptych(image_pil, results):
     panel3 = cv2.addWeighted(panel1, 0.55, panel2, 0.45, 0)
     return panel1, panel2, panel3
 
-# --- KELAS PENGHASIL PDF LAPORAN ---
+# --- KELAS PENGHASIL PDF LAPORAN DENGAN LAYOUT 3 KOLOM TRIPTYCH ---
 class PDFReport(FPDF):
     def __init__(self, model_info, threshold_info):
         super().__init__()
@@ -107,7 +107,7 @@ class PDFReport(FPDF):
 
 
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
+# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & PDF TRIPTYCH) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -128,7 +128,6 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             boxes = results[0].boxes
             
             if boxes is not None and len(boxes) > 0:
-                # Menentukan gambar yang akan disimpan (XAI untuk FP32, Standard Plot untuk INT8)
                 if "FP32" in model_type:
                     p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
                     tcol1, tcol2, tcol3 = st.columns(3)
@@ -142,30 +141,36 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                         st.image(p3, channels="BGR", use_container_width=True)
                         st.caption("3️⃣ Overlay Integrated Grad-CAM")
                     
-                    # Simpan Panel 3 (Overlay Grad-CAM) untuk laporan PDF
-                    target_img_to_save = p3
+                    # Simpan ketiga panel terpisah untuk lampiran PDF 3 Kolom
+                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    cv2.imwrite(p1_path, p1)
+                    cv2.imwrite(p2_path, p2)
+                    cv2.imwrite(p3_path, p3)
+                    
+                    saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
                 else:
                     res_plotted = results[0].plot()
                     col_single, _ = st.columns([2, 1])
                     with col_single:
                         st.image(res_plotted, channels="BGR", use_container_width=True)
                     
-                    # Simpan hasil plot standar untuk laporan PDF
-                    target_img_to_save = res_plotted
+                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    cv2.imwrite(p1_path, res_plotted)
+                    saved_paths = {"p1": p1_path, "p2": None, "p3": None}
 
                 st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
 
                 class_names = results[0].names
-                img_temp_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                cv2.imwrite(img_temp_path, target_img_to_save)
-
                 for c in boxes.cls:
                     cname = class_names[int(c)]
                     global_summary.append({
                         "Filename": uploaded_file.name, 
                         "Damage Type": cname, 
                         "Inference Time (ms)": f"{inference_time:.1f}",
-                        "Saved Image Path": img_temp_path
+                        "Paths": saved_paths,
+                        "Is_FP32": "FP32" in model_type
                     })
             else:
                 st.warning(f"⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada berkas `{uploaded_file.name}`. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
@@ -182,16 +187,14 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 pdf.set_font('helvetica', 'B', 10)
                 pdf.cell(0, 6, '1. Tabel Ringkasan Deteksi Data Valid', 0, 1, 'L')
                 
-                # Perbaikan Lebar Kolom Tabel agar rapi & tidak menabrak
                 pdf.set_font('helvetica', 'B', 9)
                 pdf.set_fill_color(230, 230, 230)
                 pdf.cell(85, 6, 'Nama Berkas', 1, 0, 'C', True)
                 pdf.cell(55, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
                 pdf.cell(50, 6, 'Latensi (ms)', 1, 1, 'C', True)
                 
-                pdf.set_font('helvetica', '', 8) # Ukuran font dikecilkan sedikit agar nama file panjang muat
+                pdf.set_font('helvetica', '', 8)
                 for item in summary_data:
-                    # Memotong nama file jika terlalu panjang agar pas di dalam sel tabel PDF
                     display_filename = item['Filename'] if len(item['Filename']) <= 45 else item['Filename'][:42] + "..."
                     pdf.cell(85, 6, str(display_filename), 1, 0, 'L')
                     pdf.cell(55, 6, str(item['Damage Type']), 1, 0, 'L')
@@ -199,23 +202,35 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 
                 pdf.ln(6)
                 pdf.set_font('helvetica', 'B', 10)
-                
-                # Judul lampiran menyesuaikan apakah menggunakan XAI atau Standard
-                lampiran_title = '2. Lampiran Visual Bukti Anotasi & XAI (Integrated Grad-CAM)' if "FP32" in model_type else '2. Lampiran Visual Bukti Anotasi Bounding Box'
-                pdf.cell(0, 6, lampiran_title, 0, 1, 'L')
+                pdf.cell(0, 6, '2. Lampiran Visual Triptych & XAI (Integrated Grad-CAM)', 0, 1, 'L')
                 
                 for item in summary_data:
-                    if os.path.exists(item['Saved Image Path']):
-                        pdf.set_font('helvetica', 'I', 8)
-                        pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']}", 0, 1, 'L')
-                        pdf.image(item['Saved Image Path'], w=90) # Lebar gambar diperbesar agar jelas
-                        pdf.ln(4)
+                    pdf.set_font('helvetica', 'I', 8)
+                    pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']}", 0, 1, 'L')
+                    
+                    if item['Is_FP32'] and item['Paths']['p2'] is not None:
+                        # Layout 3 Kolom Menyamping dalam 1 Baris (Lebar masing-masing ~60mm)
+                        y_pos = pdf.get_y()
+                        pdf.image(item['Paths']['p1'], x=10, y=y_pos, w=60)
+                        pdf.image(item['Paths']['p2'], x=75, y=y_pos, w=60)
+                        pdf.image(item['Paths']['p3'], x=140, y=y_pos, w=60)
+                        
+                        pdf.set_y(y_pos + 42) # Geser ke bawah setelah gambar selesai
+                        pdf.set_font('helvetica', 'I', 6)
+                        pdf.cell(60, 4, '1. Citra Asli & Bounding Box', 0, 0, 'C')
+                        pdf.cell(65, 4, '2. Peta Heatmap XAI', 0, 0, 'C')
+                        pdf.cell(65, 4, '3. Overlay Grad-CAM', 0, 1, 'C')
+                        pdf.ln(3)
+                    else:
+                        if os.path.exists(item['Paths']['p1']):
+                            pdf.image(item['Paths']['p1'], w=90)
+                            pdf.ln(4)
                 
                 return bytes(pdf.output())
 
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
-                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Gambar XAI)",
+                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Triptych 3 Kolom)",
                 data=pdf_bytes,
                 file_name="Laporan_Analisis_Citra_Jalan.pdf",
                 mime="application/pdf",
@@ -225,7 +240,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
 
 # =========================================================================
-# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF) ---
+# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
 # =========================================================================
 elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     if uploaded_video is not None:
@@ -294,15 +309,28 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
                         timestamp_sec = processed_frames / fps
                         
-                        # Simpan gambar snapshot untuk laporan PDF
-                        snap_img_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                        cv2.imwrite(snap_img_path, annotated_frame)
+                        # Generate Triptych untuk Snapshot Video jika FP32
+                        if "FP32" in model_type:
+                            pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                            p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
+                            p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                            p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                            p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                            cv2.imwrite(p1_path, p1)
+                            cv2.imwrite(p2_path, p2)
+                            cv2.imwrite(p3_path, p3)
+                            snap_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
+                        else:
+                            p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                            cv2.imwrite(p1_path, annotated_frame)
+                            snap_paths = {"p1": p1_path, "p2": None, "p3": None}
 
                         snapshots_data.append({
                             "frame": annotated_frame,
                             "time": f"{timestamp_sec:.1f} s",
                             "damages": ", ".join(set(frame_damages)),
-                            "path": snap_img_path
+                            "paths": snap_paths,
+                            "Is_FP32": "FP32" in model_type
                         })
 
                 cap.release()
@@ -370,14 +398,28 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     if snaps:
                         pdf.ln(6)
                         pdf.set_font('helvetica', 'B', 10)
-                        pdf.cell(0, 6, '2. Lampiran Tangkapan Titik Kritis Kerusakan', 0, 1, 'L')
+                        pdf.cell(0, 6, '2. Lampiran Titik Kritis Triptych Video (XAI / Bounding Box)', 0, 1, 'L')
                         
                         for s in snaps:
-                            if os.path.exists(s['path']):
-                                pdf.set_font('helvetica', 'I', 8)
-                                pdf.cell(0, 5, f"Waktu: {s['time']} | Klasifikasi: {s['damages']}", 0, 1, 'L')
-                                pdf.image(s['path'], w=75)
-                                pdf.ln(4)
+                            pdf.set_font('helvetica', 'I', 8)
+                            pdf.cell(0, 5, f"Waktu: {s['time']} | Klasifikasi: {s['damages']}", 0, 1, 'L')
+                            
+                            if s['Is_FP32'] and s['paths']['p2'] is not None:
+                                y_pos = pdf.get_y()
+                                pdf.image(s['paths']['p1'], x=10, y=y_pos, w=60)
+                                pdf.image(s['paths']['p2'], x=75, y=y_pos, w=60)
+                                pdf.image(s['paths']['p3'], x=140, y=y_pos, w=60)
+                                
+                                pdf.set_y(y_pos + 42)
+                                pdf.set_font('helvetica', 'I', 6)
+                                pdf.cell(60, 4, '1. Bounding Box', 0, 0, 'C')
+                                pdf.cell(65, 4, '2. Heatmap XAI', 0, 0, 'C')
+                                pdf.cell(65, 4, '3. Overlay Grad-CAM', 0, 1, 'C')
+                                pdf.ln(3)
+                            else:
+                                if os.path.exists(s['paths']['p1']):
+                                    pdf.image(s['paths']['p1'], w=90)
+                                    pdf.ln(4)
 
                     return bytes(pdf.output())
 
