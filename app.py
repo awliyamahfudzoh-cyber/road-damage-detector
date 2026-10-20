@@ -104,32 +104,32 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 results = model(image, conf=conf_threshold)
                 inference_time = (time.time() - start_time) * 1000
 
-            if "FP32" in model_type:
-                p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-                tcol1, tcol2, tcol3 = st.columns(3)
-                with tcol1:
-                    st.image(p1, channels="BGR", use_container_width=True)
-                    st.caption("1️⃣ Citra Asli & Bounding Box")
-                with tcol2:
-                    st.image(p2, channels="BGR", use_container_width=True)
-                    st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
-                with tcol3:
-                    st.image(p3, channels="BGR", use_container_width=True)
-                    st.caption("3️⃣ Overlay Integrated Grad-CAM")
-            else:
-                res_plotted = results[0].plot()
-                col_single, _ = st.columns([2, 1])
-                with col_single:
-                    st.image(res_plotted, channels="BGR", use_container_width=True)
-
-            st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
-
+            # Periksa apakah model mendeteksi objek kerusakan jalan
             boxes = results[0].boxes
+            
             if boxes is not None and len(boxes) > 0:
+                # JIKA ADA OBJEK: Tampilkan visualisasi & proses rekap
+                if "FP32" in model_type:
+                    p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+                    tcol1, tcol2, tcol3 = st.columns(3)
+                    with tcol1:
+                        st.image(p1, channels="BGR", use_container_width=True)
+                        st.caption("1️⃣ Citra Asli & Bounding Box")
+                    with tcol2:
+                        st.image(p2, channels="BGR", use_container_width=True)
+                        st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
+                    with tcol3:
+                        st.image(p3, channels="BGR", use_container_width=True)
+                        st.caption("3️⃣ Overlay Integrated Grad-CAM")
+                else:
+                    res_plotted = results[0].plot()
+                    col_single, _ = st.columns([2, 1])
+                    with col_single:
+                        st.image(res_plotted, channels="BGR", use_container_width=True)
+
+                st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
+
                 class_names = results[0].names
-                
-                # --- Validasi Objek & Simpan Gambar ---
-                # Menyimpan citra hasil anotasi untuk laporan
                 res_plotted_img = results[0].plot()
                 img_temp_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
                 cv2.imwrite(img_temp_path, res_plotted_img)
@@ -143,9 +143,8 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                         "Saved Image Path": img_temp_path
                     })
             else:
-                # --- TAMBAHAN FITUR #2: Warning jika bukan gambar jalan ---
-                st.warning("⚠️ Peringatan: Tidak ada objek jalan / kerusakan yang terdeteksi pada gambar ini. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
-
+                # JIKA TIDAK ADA OBJEK JALAN: Sembunyikan gambar, hanya tampilkan warning
+                st.warning(f"⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada berkas `{uploaded_file.name}`. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
         if global_summary:
             st.markdown("---")
             st.markdown("### 📥 Ekspor Laporan Hasil Analisis Citra")
