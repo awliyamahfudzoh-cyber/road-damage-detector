@@ -127,9 +127,24 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             boxes = results[0].boxes
             if boxes is not None and len(boxes) > 0:
                 class_names = results[0].names
+                
+                # --- Validasi Objek & Simpan Gambar ---
+                # Menyimpan citra hasil anotasi untuk laporan
+                res_plotted_img = results[0].plot()
+                img_temp_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                cv2.imwrite(img_temp_path, res_plotted_img)
+
                 for c in boxes.cls:
                     cname = class_names[int(c)]
-                    global_summary.append({"Filename": uploaded_file.name, "Damage Type": cname, "Inference Time (ms)": f"{inference_time:.1f}"})
+                    global_summary.append({
+                        "Filename": uploaded_file.name, 
+                        "Damage Type": cname, 
+                        "Inference Time (ms)": f"{inference_time:.1f}",
+                        "Saved Image Path": img_temp_path
+                    })
+            else:
+                # --- TAMBAHAN FITUR #2: Warning jika bukan gambar jalan ---
+                st.warning("⚠️ Peringatan: Tidak ada objek jalan / kerusakan yang terdeteksi pada gambar ini. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
 
         if global_summary:
             st.markdown("---")
