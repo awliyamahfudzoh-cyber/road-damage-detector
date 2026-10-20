@@ -199,7 +199,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                         pdf.image(item['Saved Image Path'], w=70)
                         pdf.ln(4)
                 
-                return pdf.output(dest='S').encode('latin1')
+                return pdf.output()
 
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
@@ -367,7 +367,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                                 pdf.image(s['path'], w=75)
                                 pdf.ln(4)
 
-                    return pdf.output(dest='S').encode('latin1')
+                    return pdf.output()
 
                 video_pdf_bytes = create_video_pdf_report(duration, avg_latency, estimated_road_length, total_titik, total_damage_accumulated, snapshots_data)
                 st.download_button(
