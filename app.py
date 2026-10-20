@@ -127,28 +127,28 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-            if boxes is not None and len(boxes) > 0:
-                #jalankan XAI untuk semua jenis model (FP32 & INT8)
-                p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-                tcol1, tcol2, tcol3 = st.columns(3)
-                with tcol1:
-                    st.image(p1, channels="BGR", use_container_width=True)
-                    st.caption("1️⃣ Citra Asli & Bounding Box")
-                with tcol2:
-                    st.image(p2, channels="BGR", use_container_width=True)
-                    st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
-                with tcol3:
-                    st.image(p3, channels="BGR", use_container_width=True)
-                    st.caption("3️⃣ Overlay Integrated Grad-CAM")
-                
-                p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                cv2.imwrite(p1_path, p1)
-                cv2.imwrite(p2_path, p2)
-                cv2.imwrite(p3_path, p3)
-                
-                saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
+                if boxes is not None and len(boxes) > 0:
+                    #jalankan XAI untuk semua jenis model (FP32 & INT8)
+                    p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+                    tcol1, tcol2, tcol3 = st.columns(3)
+                    with tcol1:
+                        st.image(p1, channels="BGR", use_container_width=True)
+                        st.caption("1️⃣ Citra Asli & Bounding Box")
+                    with tcol2:
+                        st.image(p2, channels="BGR", use_container_width=True)
+                        st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
+                    with tcol3:
+                        st.image(p3, channels="BGR", use_container_width=True)
+                        st.caption("3️⃣ Overlay Integrated Grad-CAM")
+                    
+                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    cv2.imwrite(p1_path, p1)
+                    cv2.imwrite(p2_path, p2)
+                    cv2.imwrite(p3_path, p3)
+                    
+                    saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
                 else:
                     res_plotted = results[0].plot()
                     col_single, _ = st.columns([2, 1])
