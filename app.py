@@ -128,28 +128,27 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             boxes = results[0].boxes
             
             if boxes is not None and len(boxes) > 0:
-                if "FP32" in model_type:
-                    p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-                    tcol1, tcol2, tcol3 = st.columns(3)
-                    with tcol1:
-                        st.image(p1, channels="BGR", use_container_width=True)
-                        st.caption("1️⃣ Citra Asli & Bounding Box")
-                    with tcol2:
-                        st.image(p2, channels="BGR", use_container_width=True)
-                        st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
-                    with tcol3:
-                        st.image(p3, channels="BGR", use_container_width=True)
-                        st.caption("3️⃣ Overlay Integrated Grad-CAM")
-                    
-                    # Simpan ketiga panel terpisah untuk lampiran PDF 3 Kolom
-                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                    cv2.imwrite(p1_path, p1)
-                    cv2.imwrite(p2_path, p2)
-                    cv2.imwrite(p3_path, p3)
-                    
-                    saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
+                #jalankan XAI untuk semua jenis model (FP32 & INT8)
+                p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+                tcol1, tcol2, tcol3 = st.columns(3)
+                with tcol1:
+                    st.image(p1, channels="BGR", use_container_width=True)
+                    st.caption("1️⃣ Citra Asli & Bounding Box")
+                with tcol2:
+                    st.image(p2, channels="BGR", use_container_width=True)
+                    st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
+                with tcol3:
+                    st.image(p3, channels="BGR", use_container_width=True)
+                    st.caption("3️⃣ Overlay Integrated Grad-CAM")
+                
+                p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                cv2.imwrite(p1_path, p1)
+                cv2.imwrite(p2_path, p2)
+                cv2.imwrite(p3_path, p3)
+                
+                saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
                 else:
                     res_plotted = results[0].plot()
                     col_single, _ = st.columns([2, 1])
@@ -189,7 +188,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     "Avg Confidence": f"{avg_conf_all:.2f}",
                     "Inference Time (ms)": f"{inference_time:.1f}",
                     "Paths": saved_paths,
-                    "Is_FP32": "FP32" in model_type
+                    "Show_Triptych": True
                 })
             else:
                 st.warning(f"⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada berkas `{uploaded_file.name}`. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
@@ -232,7 +231,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     pdf.set_font('helvetica', 'I', 8)
                     pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']} ({item['Unit Count']} Unit)", 0, 1, 'L')
                     
-                    if item['Is_FP32'] and item['Paths']['p2'] is not None:
+                    if item['Show_Triptych'] and item['Paths']['p2'] is not None:
                         y_pos = pdf.get_y()
                         pdf.image(item['Paths']['p1'], x=10, y=y_pos, w=60)
                         pdf.image(item['Paths']['p2'], x=75, y=y_pos, w=60)
@@ -421,7 +420,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     if snaps:
                         pdf.ln(6)
                         pdf.set_font('helvetica', 'B', 10)
-                        pdf.cell(0, 6, '2. Lampiran Titik Kritis Triptych Video (XAI / Bounding Box)', 0, 1, 'L')
+                        pdf.cell(0, 6, '2. Lampiran Hasil Snapshot (Bounding Box)', 0, 1, 'L')
                         
                         for s in snaps:
                             pdf.set_font('helvetica', 'I', 8)
