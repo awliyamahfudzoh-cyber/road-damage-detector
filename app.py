@@ -6,6 +6,7 @@ from ultralytics import YOLO
 import tempfile
 import time
 import pandas as pd
+from fpdf import FPDF
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -85,8 +86,28 @@ def generate_integrated_gradcam_triptych(image_pil, results):
     panel3 = cv2.addWeighted(panel1, 0.55, panel2, 0.45, 0)
     return panel1, panel2, panel3
 
+# --- KELAS PENGHASIL PDF LAPORAN ---
+class PDFReport(FPDF):
+    def __init__(self, model_info, threshold_info):
+        super().__init__()
+        self.model_info = model_info
+        self.threshold_info = threshold_info
+
+    def header(self):
+        self.set_font('helvetica', 'B', 12)
+        self.cell(0, 8, 'LAPORAN RESMI ANALISIS KERUSAKAN PERKERASAN JALAN', 0, 1, 'C')
+        self.set_font('helvetica', 'I', 9)
+        self.cell(0, 5, f'Backend Model: {self.model_info} | Threshold: {self.threshold_info}', 0, 1, 'C')
+        self.ln(4)
+
+    def footer(self):
+        self.set_y(-12)
+        self.set_font('helvetica', 'I', 8)
+        self.cell(0, 8, f'Halaman {self.page_no()}', 0, 0, 'C')
+
+
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD) ---
+# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & PDF) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -104,11 +125,9 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 results = model(image, conf=conf_threshold)
                 inference_time = (time.time() - start_time) * 1000
 
-            # Periksa apakah model mendeteksi objek kerusakan jalan
             boxes = results[0].boxes
             
             if boxes is not None and len(boxes) > 0:
-                # JIKA ADA OBJEK: Tampilkan visualisasi & proses rekap
                 if "FP32" in model_type:
                     p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
                     tcol1, tcol2, tcol3 = st.columns(3)
@@ -143,24 +162,58 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                         "Saved Image Path": img_temp_path
                     })
             else:
-                # JIKA TIDAK ADA OBJEK JALAN: Sembunyikan gambar, hanya tampilkan warning
                 st.warning(f"⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada berkas `{uploaded_file.name}`. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
+
         if global_summary:
             st.markdown("---")
-            st.markdown("### 📥 Ekspor Laporan Hasil Analisis Citra")
-            df_report = pd.DataFrame(global_summary)
-            csv_data = df_report.to_csv(index=False).encode('utf-8')
+            st.markdown("### 📥 Ekspor Laporan Resmi Analisis Citra (.PDF)")
+            
+            def create_pdf_report(summary_data):
+                pdf = PDFReport(model_type, conf_threshold)
+                pdf.add_page()
+                pdf.set_auto_page_break(auto=True, margin=15)
+                
+                pdf.set_font('helvetica', 'B', 10)
+                pdf.cell(0, 6, '1. Tabel Ringkasan Deteksi Data Valid', 0, 1, 'L')
+                
+                pdf.set_font('helvetica', 'B', 9)
+                pdf.set_fill_color(230, 230, 230)
+                pdf.cell(70, 6, 'Nama Berkas', 1, 0, 'C', True)
+                pdf.cell(60, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
+                pdf.cell(50, 6, 'Latensi (ms)', 1, 1, 'C', True)
+                
+                pdf.set_font('helvetica', '', 9)
+                for item in summary_data:
+                    pdf.cell(70, 6, str(item['Filename']), 1, 0, 'L')
+                    pdf.cell(60, 6, str(item['Damage Type']), 1, 0, 'L')
+                    pdf.cell(50, 6, str(item['Inference Time (ms)']), 1, 1, 'C')
+                
+                pdf.ln(6)
+                pdf.set_font('helvetica', 'B', 10)
+                pdf.cell(0, 6, '2. Lampiran Visual Bukti Anotasi', 0, 1, 'L')
+                
+                for item in summary_data:
+                    if os.path.exists(item['Saved Image Path']):
+                        pdf.set_font('helvetica', 'I', 8)
+                        pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']}", 0, 1, 'L')
+                        pdf.image(item['Saved Image Path'], w=70)
+                        pdf.ln(4)
+                
+                return pdf.output(dest='S').encode('latin1')
+
+            pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
-                label="📥 Unduh Rekap Laporan Deteksi (.CSV)",
-                data=csv_data,
-                file_name="laporan_deteksi_kerusakan_jalan.csv",
-                mime="text/csv",
+                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Gambar)",
+                data=pdf_bytes,
+                file_name="Laporan_Analisis_Citra_Jalan.pdf",
+                mime="application/pdf",
             )
     else:
-        st.info("👈 Silakan unggah satu atau beberapa file gambar sekaligus melalui panel **sidebar di sebelah kiri**.")
+        st.info("👈 Silakan unggah satu atau beberapa file gambar jalan melalui panel **sidebar di sebelah kiri**.")
+
 
 # =========================================================================
-# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE) ---
+# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF) ---
 # =========================================================================
 elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     if uploaded_video is not None:
@@ -228,10 +281,16 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
 
                         timestamp_sec = processed_frames / fps
+                        
+                        # Simpan gambar snapshot untuk laporan PDF
+                        snap_img_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                        cv2.imwrite(snap_img_path, annotated_frame)
+
                         snapshots_data.append({
                             "frame": annotated_frame,
                             "time": f"{timestamp_sec:.1f} s",
-                            "damages": ", ".join(set(frame_damages))
+                            "damages": ", ".join(set(frame_damages)),
+                            "path": snap_img_path
                         })
 
                 cap.release()
@@ -244,7 +303,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     if os.path.exists(output_path):
                         with open(output_path, 'rb') as f:
                             video_bytes = f.read()
-                        output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
+                            output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
                         
                 st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
@@ -264,23 +323,58 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                         with r_cols[idx % len(r_cols)]:
                             st.metric(label=f"Jenis: {k}", value=f"{v} Titik")
                 else:
-                    st.info("Tidak ada kerusakan signifikan terdeteksi pada ambang batas ini.")
+                    st.warning("⚠️ Peringatan: Tidak ada objek jalan atau kerusakan signifikan terdeteksi pada video ini.")
 
                 st.markdown("---")
-                st.markdown("### 📥 Ekspor Laporan Pemantauan Ruas Jalan")
+                st.markdown("### 📥 Ekspor Laporan Pemantauan Ruas Jalan (.PDF)")
                 
-                report_dict = {
-                    "Parameter Pengujian": ["Durasi Video (s)", "Rata-rata Latensi (ms/frame)", "Estimasi Panjang Ruas (m)", "Total Titik Kerusakan"] + list(total_damage_accumulated.keys()),
-                    "Nilai / Kuantitas": [f"{duration:.2f}", f"{avg_latency:.1f}", f"{estimated_road_length:.1f}", f"{total_titik}"] + [str(v) for v in total_damage_accumulated.values()]
-                }
-                df_video_report = pd.DataFrame(report_dict)
-                csv_video_data = df_video_report.to_csv(index=False).encode('utf-8')
-                
+                def create_video_pdf_report(dur, lat, r_len, tot_titik, damage_dict, snaps):
+                    pdf = PDFReport(model_type, conf_threshold)
+                    pdf.add_page()
+                    pdf.set_auto_page_break(auto=True, margin=15)
+                    
+                    pdf.set_font('helvetica', 'B', 10)
+                    pdf.cell(0, 6, '1. Ringkasan Metrik Pemantauan Ruas Jalan', 0, 1, 'L')
+                    
+                    pdf.set_font('helvetica', 'B', 9)
+                    pdf.set_fill_color(230, 230, 230)
+                    pdf.cell(100, 6, 'Parameter Pengujian', 1, 0, 'C', True)
+                    pdf.cell(80, 6, 'Nilai / Kuantitas', 1, 1, 'C', True)
+                    
+                    metrics_data = [
+                        ("Durasi Video (s)", f"{dur:.2f}"),
+                        ("Rata-rata Latensi (ms/frame)", f"{lat:.1f}"),
+                        ("Estimasi Panjang Ruas (m)", f"{r_len:.1f}"),
+                        ("Total Titik Kerusakan", f"{tot_titik}")
+                    ]
+                    for k, v in damage_dict.items():
+                        metrics_data.append((f"Jenis Kerusakan: {k}", f"{v} Titik"))
+
+                    pdf.set_font('helvetica', '', 9)
+                    for k, v in metrics_data:
+                        pdf.cell(100, 6, k, 1, 0, 'L')
+                        pdf.cell(80, 6, v, 1, 1, 'C')
+
+                    if snaps:
+                        pdf.ln(6)
+                        pdf.set_font('helvetica', 'B', 10)
+                        pdf.cell(0, 6, '2. Lampiran Tangkapan Titik Kritis Kerusakan', 0, 1, 'L')
+                        
+                        for s in snaps:
+                            if os.path.exists(s['path']):
+                                pdf.set_font('helvetica', 'I', 8)
+                                pdf.cell(0, 5, f"Waktu: {s['time']} | Klasifikasi: {s['damages']}", 0, 1, 'L')
+                                pdf.image(s['path'], w=75)
+                                pdf.ln(4)
+
+                    return pdf.output(dest='S').encode('latin1')
+
+                video_pdf_bytes = create_video_pdf_report(duration, avg_latency, estimated_road_length, total_titik, total_damage_accumulated, snapshots_data)
                 st.download_button(
-                    label="📥 Unduh Rekap Laporan Pemantauan Jalan (.CSV)",
-                    data=csv_video_data,
-                    file_name="laporan_pemantauan_ruas_jalan.csv",
-                    mime="text/csv",
+                    label="📥 Unduh Laporan Pemantauan Video (.PDF)",
+                    data=video_pdf_bytes,
+                    file_name="Laporan_Pemantauan_Video_Jalan.pdf",
+                    mime="application/pdf",
                 )
 
                 if snapshots_data:
@@ -294,76 +388,89 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     else:
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
 
+
 # =========================================================================
-# --- MENU 3: KAMERA / LIVE STREAMING (LIVE VIDEO STREAM) ---
+# --- MENU 3: KAMERA / LIVE STREAMING (DUAL MODE: FOTO & VIDEO LIVE) ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
-    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time")
-    st.info("💡 Fitur ini mengaktifkan aliran video langsung dari kamera perangkat Anda.")
+    st.markdown("### 🔴 Studio Live Streaming & Tangkapan Kamera Real-Time")
+    st.info("💡 Pilih mode interaksi kamera di bawah: Ambil Foto Instan atau Streaming Video Langsung.")
 
-    # Menggunakan HTML5 MediaDevices API untuk streaming video langsung di browser
-    import streamlit.components.v1 as components
+    cam_mode = st.radio("Pilih Mode Kamera", ("Ambil Foto Langsung (Snapshot)", "Live Stream Video Langsung (Real-Time Webcam)"), horizontal=True)
 
-    # Komponen HTML + JavaScript untuk mengakses Webcam langsung di browser
-    webrtc_html = """
-    <div>
-        <video id="webcam" autoplay playsinline width="100%" style="border-radius: 10px; border: 2px solid #ccc;"></video>
-        <canvas id="canvas" style="display:none;"></canvas>
-    </div>
-    <script>
-        const video = document.getElementById('webcam');
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => {
-                console.error("Gagal mengakses webcam: ", err);
-                alert("Gagal mengakses webcam. Pastikan izin kamera di browser sudah diaktifkan.");
-            });
-    </script>
-    """
-    
-    col_stream1, col_stream2 = st.columns(2)
-    with col_stream1:
-        st.markdown("#### 📷 Live Feed Kamera Perangkat")
-        # Menampilkan elemen video HTML5
-        components.html(webrtc_html, height=400)
+    if cam_mode == "Ambil Foto Langsung (Snapshot)":
+        camera_file = st.camera_input("Ambil *Snapshot* Langsung dari Kamera Perangkat")
 
-    with col_stream2:
-        st.markdown("#### 🤖 Simulasi / Tangkapan Berkelanjutan")
-        st.info("Gunakan tombol di bawah untuk mengambil sampel *frame* dari live feed secara instan untuk dianalisis oleh model YOLOv10.")
+        if camera_file is not None:
+            image = Image.open(camera_file)
+            with st.spinner("Menganalisis *frame*..."):
+                start_time = time.time()
+                results = model(image, conf=conf_threshold)
+                inference_time = (time.time() - start_time) * 1000
+
+            boxes = results[0].boxes
+            if boxes is not None and len(boxes) > 0:
+                if "FP32" in model_type:
+                    p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+                    tcol1, tcol2, tcol3 = st.columns(3)
+                    with tcol1:
+                        st.image(p1, channels="BGR", use_container_width=True)
+                        st.caption("1️⃣ Citra Asli & Bounding Box")
+                    with tcol2:
+                        st.image(p2, channels="BGR", use_container_width=True)
+                        st.caption("2️⃣ Peta Heatmap XAI")
+                    with tcol3:
+                        st.image(p3, channels="BGR", use_container_width=True)
+                        st.caption("3️⃣ Overlay Grad-CAM")
+                else:
+                    res_plotted = results[0].plot()
+                    st.image(res_plotted, channels="BGR", use_container_width=True)
+
+                st.info(f"⏱️ Waktu Inferensi: **{inference_time:.1f} ms**")
+                class_names = results[0].names
+                detected_labels = [class_names[int(c)] for c in boxes.cls]
+                st.success(f"✅ Terdeteksi: {', '.join(set(detected_labels))}")
+            else:
+                st.warning("⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi. Pastikan kamera mengarah ke permukaan jalan.")
+
+    else:
+        st.markdown("#### 🎥 Live Stream Video Aktif")
+        run_live_stream = st.checkbox("Nyalakan Live Stream Webcam")
         
-        # Tombol interaktif untuk menangkap frame dari live stream
-        if st.button("📸 Tangkap & Analisis Frame Saat Ini"):
-            # Sebagai alternatif aman dan kompatibel penuh di Streamlit cloud/lokal:
-            # Kita arahkan ke widget tangkapan gambar instan yang mengambil dari kamera aktif
-            st.warning("Silakan gunakan fitur tangkapan instan di bawah jika video di samping memerlukan sinkronisasi frame:")
+        if run_live_stream:
+            stream_placeholder = st.empty()
+            info_placeholder = st.empty()
             
-    # Widget pendukung tangkapan instan berbasis frame aktif
-    st.markdown("---")
-    camera_file = st.camera_input("Ambil *Snapshot* Langsung dari Aliran Kamera Utama")
-
-    if camera_file is not None:
-        image = Image.open(camera_file)
-        with st.spinner("Menganalisis *frame* *real-time*..."):
-            start_time = time.time()
-            results = model(image, conf=conf_threshold)
-            inference_time = (time.time() - start_time) * 1000
-
-        if "FP32" in model_type:
-            p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-            tcol1, tcol2, tcol3 = st.columns(3)
-            with tcol1:
-                st.image(p1, channels="BGR", use_container_width=True)
-                st.caption("1️⃣ Citra Asli & Bounding Box")
-            with tcol2:
-                st.image(p2, channels="BGR", use_container_width=True)
-                st.caption("2️⃣ Peta Heatmap XAI")
-            with tcol3:
-                st.image(p3, channels="BGR", use_container_width=True)
-                st.caption("3️⃣ Overlay Grad-CAM")
+            cap_cam = cv2.VideoCapture(0)
+            if not cap_cam.isOpened():
+                st.error("❌ Gagal mengakses webcam perangkat keras lokal.")
+            else:
+                try:
+                    while run_live_stream:
+                        ret, frame = cap_cam.read()
+                        if not ret:
+                            st.warning("⚠️ Gagal membaca bingkai video.")
+                            break
+                        
+                        t_s = time.time()
+                        results = model(frame, conf=conf_threshold, verbose=False)
+                        t_e = time.time()
+                        latensi_live = (t_e - t_s) * 1000
+                        
+                        annotated_frm = results[0].plot()
+                        rgb_frm = cv2.cvtColor(annotated_frm, cv2.COLOR_BGR2RGB)
+                        stream_placeholder.image(rgb_frm, channels="RGB", use_container_width=True)
+                        
+                        boxes_live = results[0].boxes
+                        if boxes_live is not None and len(boxes_live) > 0:
+                            cls_names = results[0].names
+                            lbls = [cls_names[int(c)] for c in boxes_live.cls]
+                            info_placeholder.info(f"🔴 Status Live: Terdeteksi {len(boxes_live)} objek ({', '.join(set(lbls))}) | Latensi: {latensi_live:.1f} ms")
+                        else:
+                            info_placeholder.warning("⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada frame ini.")
+                        
+                        time.sleep(0.02)
+                finally:
+                    cap_cam.release()
         else:
-            res_plotted = results[0].plot()
-            st.image(res_plotted, channels="BGR", use_container_width=True)
-
-        st.info(f"⏱️ Waktu Inferensi: **{inference_time:.1f} ms**")
+            st.info("💡 Centang kotak di atas untuk memulai streaming video langsung via webcam.")
