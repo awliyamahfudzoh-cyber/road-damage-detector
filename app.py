@@ -163,15 +163,17 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
 
                 class_names = results[0].names
-                for c in boxes.cls:
-                    cname = class_names[int(c)]
-                    global_summary.append({
-                        "Filename": uploaded_file.name, 
-                        "Damage Type": cname, 
-                        "Inference Time (ms)": f"{inference_time:.1f}",
-                        "Paths": saved_paths,
-                        "Is_FP32": "FP32" in model_type
-                    })
+                # Mengambil semua jenis kerusakan unik yang terdeteksi pada gambar ini
+                detected_classes = set([class_names[int(c)] for c in boxes.cls])
+                damage_types_str = ", ".join(detected_classes)
+
+                global_summary.append({
+                    "Filename": uploaded_file.name, 
+                    "Damage Type": damage_types_str, 
+                    "Inference Time (ms)": f"{inference_time:.1f}",
+                    "Paths": saved_paths,
+                    "Is_FP32": "FP32" in model_type
+                })
             else:
                 st.warning(f"⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada berkas `{uploaded_file.name}`. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
 
