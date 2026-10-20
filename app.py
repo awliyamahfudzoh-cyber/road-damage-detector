@@ -163,13 +163,30 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
 
                 class_names = results[0].names
-                # Mengambil semua jenis kerusakan unik yang terdeteksi pada gambar ini
-                detected_classes = set([class_names[int(c)] for c in boxes.cls])
-                damage_types_str = ", ".join(detected_classes)
+                box_data = boxes.data.cpu().numpy() # [x1, y1, x2, y2, conf, cls]
+                
+                # Mengelompokkan berdasarkan kelas
+                class_stats = {}
+                for box in box_data:
+                    cls_id = int(box[5])
+                    conf = float(box[4])
+                    cname = class_names[cls_id]
+                    if cname not in class_stats:
+                        class_stats[cname] = []
+                    class_stats[cname].append(conf)
+                
+                damage_summary_str = []
+                total_units = len(boxes)
+                avg_conf_all = sum([float(b[4]) for b in box_data]) / total_units if total_units > 0 else 0
+                
+                for cname, confs in class_stats.items():
+                    damage_summary_str.append(f"{cname} ({len(confs)} unit)")
 
                 global_summary.append({
                     "Filename": uploaded_file.name, 
-                    "Damage Type": damage_types_str, 
+                    "Damage Type": ", ".join(class_stats.keys()), 
+                    "Unit Count": total_units,
+                    "Avg Confidence": f"{avg_conf_all:.2f}",
                     "Inference Time (ms)": f"{inference_time:.1f}",
                     "Paths": saved_paths,
                     "Is_FP32": "FP32" in model_type
@@ -181,7 +198,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             st.markdown("---")
             st.markdown("### 📥 Ekspor Laporan Resmi Analisis Citra (.PDF)")
             
-            def create_pdf_report(summary_data):
+           def create_pdf_report(summary_data):
                 pdf = PDFReport(model_type, conf_threshold)
                 pdf.add_page()
                 pdf.set_auto_page_break(auto=True, margin=15)
@@ -189,18 +206,23 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 pdf.set_font('helvetica', 'B', 10)
                 pdf.cell(0, 6, '1. Tabel Ringkasan Deteksi Data Valid', 0, 1, 'L')
                 
+                # Menambahkan Kolom Confidence & Jumlah Unit
                 pdf.set_font('helvetica', 'B', 9)
                 pdf.set_fill_color(230, 230, 230)
-                pdf.cell(85, 6, 'Nama Berkas', 1, 0, 'C', True)
-                pdf.cell(55, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
-                pdf.cell(50, 6, 'Latensi (ms)', 1, 1, 'C', True)
+                pdf.cell(60, 6, 'Nama Berkas', 1, 0, 'C', True)
+                pdf.cell(50, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
+                pdf.cell(30, 6, 'Jml Unit', 1, 0, 'C', True)
+                pdf.cell(25, 6, 'Conf. Avg', 1, 0, 'C', True)
+                pdf.cell(25, 6, 'Latensi', 1, 1, 'C', True)
                 
                 pdf.set_font('helvetica', '', 8)
                 for item in summary_data:
-                    display_filename = item['Filename'] if len(item['Filename']) <= 45 else item['Filename'][:42] + "..."
-                    pdf.cell(85, 6, str(display_filename), 1, 0, 'L')
-                    pdf.cell(55, 6, str(item['Damage Type']), 1, 0, 'L')
-                    pdf.cell(50, 6, str(item['Inference Time (ms)']), 1, 1, 'C')
+                    display_filename = item['Filename'] if len(item['Filename']) <= 35 else item['Filename'][:32] + "..."
+                    pdf.cell(60, 6, str(display_filename), 1, 0, 'L')
+                    pdf.cell(50, 6, str(item['Damage Type']), 1, 0, 'L')
+                    pdf.cell(30, 6, str(item['Unit Count']), 1, 0, 'C')
+                    pdf.cell(25, 6, str(item['Avg Confidence']), 1, 0, 'C')
+                    pdf.cell(25, 6, f"{item['Inference Time (ms)']} ms", 1, 1, 'C')
                 
                 pdf.ln(6)
                 pdf.set_font('helvetica', 'B', 10)
@@ -208,16 +230,15 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 
                 for item in summary_data:
                     pdf.set_font('helvetica', 'I', 8)
-                    pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']}", 0, 1, 'L')
+                    pdf.cell(0, 5, f"File: {item['Filename']} | Kategori: {item['Damage Type']} ({item['Unit Count']} Unit)", 0, 1, 'L')
                     
                     if item['Is_FP32'] and item['Paths']['p2'] is not None:
-                        # Layout 3 Kolom Menyamping dalam 1 Baris (Lebar masing-masing ~60mm)
                         y_pos = pdf.get_y()
                         pdf.image(item['Paths']['p1'], x=10, y=y_pos, w=60)
                         pdf.image(item['Paths']['p2'], x=75, y=y_pos, w=60)
                         pdf.image(item['Paths']['p3'], x=140, y=y_pos, w=60)
                         
-                        pdf.set_y(y_pos + 42) # Geser ke bawah setelah gambar selesai
+                        pdf.set_y(y_pos + 42)
                         pdf.set_font('helvetica', 'I', 6)
                         pdf.cell(60, 4, '1. Citra Asli & Bounding Box', 0, 0, 'C')
                         pdf.cell(65, 4, '2. Peta Heatmap XAI', 0, 0, 'C')
@@ -229,7 +250,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                             pdf.ln(4)
                 
                 return bytes(pdf.output())
-
+               
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
                 label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Triptych 3 Kolom)",
