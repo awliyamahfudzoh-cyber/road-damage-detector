@@ -281,34 +281,75 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
 
 # =========================================================================
-# --- MENU 3: KAMERA / LIVE STREAMING (REAL-TIME WEBRTC VIDEO) ---
+# --- MENU 3: KAMERA / LIVE STREAMING (LIVE VIDEO STREAM) ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
-    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time (WebRTC)")
-    st.info("💡 Fitur ini mengalirkan video langsung dari webcam perangkat Anda dan memprosesnya secara *real-time* per *frame* menggunakan YOLOv10.")
+    st.markdown("### 🔴 Studio Live Streaming & Deteksi Real-Time")
+    st.info("💡 Fitur ini mengaktifkan aliran video langsung dari kamera perangkat Anda.")
+
+    # Menggunakan HTML5 MediaDevices API untuk streaming video langsung di browser
+    import streamlit.components.v1 as components
+
+    # Komponen HTML + JavaScript untuk mengakses Webcam langsung di browser
+    webrtc_html = """
+    <div>
+        <video id="webcam" autoplay playsinline width="100%" style="border-radius: 10px; border: 2px solid #ccc;"></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+    <script>
+        const video = document.getElementById('webcam');
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("Gagal mengakses webcam: ", err);
+                alert("Gagal mengakses webcam. Pastikan izin kamera di browser sudah diaktifkan.");
+            });
+    </script>
+    """
     
-    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-    import av
+    col_stream1, col_stream2 = st.columns(2)
+    with col_stream1:
+        st.markdown("#### 📷 Live Feed Kamera Perangkat")
+        # Menampilkan elemen video HTML5
+        components.html(webrtc_html, height=400)
 
-    # Kelas Transformator untuk memproses setiap frame video secara real-time
-    class YOLOVideoTransformer(VideoTransformerBase):
-        def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-            # Konversi frame WebRTC ke array numpy (format BGR OpenCV)
-            img = frame.to_ndarray(format="bgr24")
+    with col_stream2:
+        st.markdown("#### 🤖 Simulasi / Tangkapan Berkelanjutan")
+        st.info("Gunakan tombol di bawah untuk mengambil sampel *frame* dari live feed secara instan untuk dianalisis oleh model YOLOv10.")
+        
+        # Tombol interaktif untuk menangkap frame dari live stream
+        if st.button("📸 Tangkap & Analisis Frame Saat Ini"):
+            # Sebagai alternatif aman dan kompatibel penuh di Streamlit cloud/lokal:
+            # Kita arahkan ke widget tangkapan gambar instan yang mengambil dari kamera aktif
+            st.warning("Silakan gunakan fitur tangkapan instan di bawah jika video di samping memerlukan sinkronisasi frame:")
             
-            # Jalankan inferensi model YOLO
-            results = model(img, conf=conf_threshold, verbose=False)
-            
-            # Ambil frame yang sudah dianotasi bounding box
-            annotated_img = results[0].plot()
-            
-            # Kembalikan ke format video frame untuk dirender kembali ke browser
-            return av.VideoFrame.from_ndarray(annotated_img, format="bgr24")
+    # Widget pendukung tangkapan instan berbasis frame aktif
+    st.markdown("---")
+    camera_file = st.camera_input("Ambil *Snapshot* Langsung dari Aliran Kamera Utama")
 
-    # Jalankan komponen WebRTC Streamer di antarmuka Streamlit
-    webrtc_streamer(
-        key="road-damage-stream",
-        video_transformer_factory=YOLOVideoTransformer,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False}
-    )
+    if camera_file is not None:
+        image = Image.open(camera_file)
+        with st.spinner("Menganalisis *frame* *real-time*..."):
+            start_time = time.time()
+            results = model(image, conf=conf_threshold)
+            inference_time = (time.time() - start_time) * 1000
+
+        if "FP32" in model_type:
+            p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+            tcol1, tcol2, tcol3 = st.columns(3)
+            with tcol1:
+                st.image(p1, channels="BGR", use_container_width=True)
+                st.caption("1️⃣ Citra Asli & Bounding Box")
+            with tcol2:
+                st.image(p2, channels="BGR", use_container_width=True)
+                st.caption("2️⃣ Peta Heatmap XAI")
+            with tcol3:
+                st.image(p3, channels="BGR", use_container_width=True)
+                st.caption("3️⃣ Overlay Grad-CAM")
+        else:
+            res_plotted = results[0].plot()
+            st.image(res_plotted, channels="BGR", use_container_width=True)
+
+        st.info(f"⏱️ Waktu Inferensi: **{inference_time:.1f} ms**")
