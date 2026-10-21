@@ -143,7 +143,7 @@ elif input_type == "Citra / Gambar (Multi-Upload)":
                     is_road_environment = False
 
             if not is_road_environment:
-                st.error(❌ **Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.)
+                st.error(**Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.)
                 continue  # Lewati dan jangan tampilkan triptych XAI
 
             # Jika lolos sebagai jalan (baik jalan rusak maupun jalan mulus bersih):
