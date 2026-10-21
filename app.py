@@ -109,7 +109,7 @@ class PDFReport(FPDF):
 # =========================================================================
 # --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
-if input_type == "Citra / Gambar (Multi-Upload)":
+elif input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
         st.markdown(f"### 🖼️ Analisis Batch Citra ({len(uploaded_files)} berkas dimuat)")
         
@@ -127,33 +127,33 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
+            # Tampilkan XAI Triptych untuk SEMUA kondisi gambar jalan (baik ada kerusakan maupun jalan mulus)
+            p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+            tcol1, tcol2, tcol3 = st.columns(3)
+            with tcol1:
+                st.image(p1, channels="BGR", use_container_width=True)
+                st.caption("1️⃣ Citra Asli & Bounding Box")
+            with tcol2:
+                st.image(p2, channels="BGR", use_container_width=True)
+                st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
+            with tcol3:
+                st.image(p3, channels="BGR", use_container_width=True)
+                st.caption("3️⃣ Overlay Integrated Grad-CAM")
+            
+            p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+            p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+            p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+            cv2.imwrite(p1_path, p1)
+            cv2.imwrite(p2_path, p2)
+            cv2.imwrite(p3_path, p3)
+            
+            saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
+
+            st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
+
             if boxes is not None and len(boxes) > 0:
-                # XAI Triptych diaktifkan untuk SEMUA model (FP32 & INT8)
-                p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-                tcol1, tcol2, tcol3 = st.columns(3)
-                with tcol1:
-                    st.image(p1, channels="BGR", use_container_width=True)
-                    st.caption("1️⃣ Citra Asli & Bounding Box")
-                with tcol2:
-                    st.image(p2, channels="BGR", use_container_width=True)
-                    st.caption("2️⃣ Peta Heatmap XAI (ROI Filtered)")
-                with tcol3:
-                    st.image(p3, channels="BGR", use_container_width=True)
-                    st.caption("3️⃣ Overlay Integrated Grad-CAM")
-                
-                p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                cv2.imwrite(p1_path, p1)
-                cv2.imwrite(p2_path, p2)
-                cv2.imwrite(p3_path, p3)
-                
-                saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
-
-                st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
-
                 class_names = results[0].names
-                box_data = boxes.data.cpu().numpy() # [x1, y1, x2, y2, conf, cls]
+                box_data = boxes.data.cpu().numpy()
                 
                 class_stats = {}
                 for box in box_data:
@@ -167,9 +167,12 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 total_units = len(boxes)
                 avg_conf_all = sum([float(b[4]) for b in box_data]) / total_units if total_units > 0 else 0
 
+                damage_desc = ", ".join(class_stats.keys())
+                st.success(f"✅ Status: Terdeteksi {total_units} unit kerusakan ({damage_desc}).")
+
                 global_summary.append({
                     "Filename": uploaded_file.name, 
-                    "Damage Type": ", ".join(class_stats.keys()), 
+                    "Damage Type": damage_desc, 
                     "Unit Count": total_units,
                     "Avg Confidence": f"{avg_conf_all:.2f}",
                     "Inference Time (ms)": f"{inference_time:.1f}",
@@ -177,7 +180,17 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     "Show_Triptych": True
                 })
             else:
-                st.warning(f"⚠️ Peringatan: Tidak ada objek jalan atau kerusakan yang terdeteksi pada berkas `{uploaded_file.name}`. Pastikan citra yang diunggah adalah permukaan perkerasan jalan.")
+                # Kondisi jalan mulus / bersih tanpa kerusakan
+                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Tidak ada kerusakan struktural terdeteksi).")
+                global_summary.append({
+                    "Filename": uploaded_file.name, 
+                    "Damage Type": "Normal / Jalan Mulus", 
+                    "Unit Count": 0,
+                    "Avg Confidence": "-",
+                    "Inference Time (ms)": f"{inference_time:.1f}",
+                    "Paths": saved_paths,
+                    "Show_Triptych": True
+                })
 
         if global_summary:
             st.markdown("---")
@@ -228,10 +241,6 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                         pdf.cell(65, 4, '2. Peta Heatmap XAI', 0, 0, 'C')
                         pdf.cell(65, 4, '3. Overlay Grad-CAM', 0, 1, 'C')
                         pdf.ln(3)
-                    else:
-                        if os.path.exists(item['Paths']['p1']):
-                            pdf.image(item['Paths']['p1'], w=90)
-                            pdf.ln(4)
                 
                 return bytes(pdf.output())
 
@@ -244,7 +253,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             )
     else:
         st.info("👈 Silakan unggah satu atau beberapa file gambar jalan melalui panel **sidebar di sebelah kiri**.")
-
+        
 # =========================================================================
 # --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
 # =========================================================================
