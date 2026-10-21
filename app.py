@@ -106,7 +106,7 @@ class PDFReport(FPDF):
 # =========================================================================
 # --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
-elif input_type == "Citra / Gambar (Multi-Upload)":
+if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
         st.markdown(f"### 🖼️ Analisis Batch Citra ({len(uploaded_files)} berkas dimuat)")
         
