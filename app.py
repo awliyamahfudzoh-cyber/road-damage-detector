@@ -292,13 +292,13 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 # =========================================================================
 # --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
 # =========================================================================
-elif input_type == "Studio Pemantauan Video (Timeline Mode)":
+elif input_type == "Video Rekaman":
     if uploaded_video is not None:
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_video.read())
         video_path = tfile.name
 
-        st.markdown("### 🎬 Studio Canvas: Perbandingan Video Asli & Hasil Deteksi AI")
+        st.markdown("### 🎬 Perbandingan Video Asli & Hasil Deteksi AI")
         c_vid1, c_vid2 = st.columns(2)
         with c_vid1:
             st.markdown("#### 🎞️ Input Source (Video Mentah)")
@@ -483,7 +483,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
                 if snapshots_data:
                     st.markdown("---")
-                    st.markdown("### ⏱️ Timeline & Titik Kritis Kerusakan (Video Timeline Scrubber)")
+                    st.markdown("### ⏱️ Timeline & Titik Kritis Kerusakan (Video Timeline)")
                     s_cols = st.columns(3)
                     for i, snap in enumerate(snapshots_data):
                         with s_cols[i % 3]:
@@ -494,67 +494,136 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
 
 # =========================================================================
-# --- MENU 3: KAMERA / LIVE STREAMING (DUAL MODE: FOTO & VIDEO LIVE) ---
+# --- MENU 3: KAMERA / LIVE STREAMING (SNAPSHOT & LAPORAN PDF) ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
-    st.markdown("### 🔴 Studio Live Streaming & Tangkapan Kamera Real-Time")
-    st.info("💡 Pilih mode interaksi kamera di bawah: Ambil Foto Instan atau Streaming Video Langsung.")
+    st.markdown("### 🔴 Studio Tangkapan Kamera Real-Time (Snapshot)")
+    st.info("💡 Ambil foto langsung menggunakan kamera perangkat untuk dianalisis oleh model YOLOv10.")
 
-    cam_mode = st.radio("Pilih Mode Kamera", ("Ambil Foto Langsung (Snapshot)", "Live Stream Video Langsung (Real-Time Webcam)"), horizontal=True)
+    camera_file = st.camera_input("Ambil *Snapshot* Langsung dari Kamera Perangkat")
 
-    if cam_mode == "Ambil Foto Langsung (Snapshot)":
-        camera_file = st.camera_input("Ambil *Snapshot* Langsung dari Kamera Perangkat")
+    if camera_file is not None:
+        image = Image.open(camera_file)
+        with st.spinner("Menganalisis *frame* kamera..."):
+            start_time = time.time()
+            results = model(image, conf=conf_threshold)
+            inference_time = (time.time() - start_time) * 1000
 
-        if camera_file is not None:
-            image = Image.open(camera_file)
-            with st.spinner("Menganalisis *frame*..."):
-                start_time = time.time()
-                results = model(image, conf=conf_threshold)
-                inference_time = (time.time() - start_time) * 1000
-
-            boxes = results[0].boxes
+        boxes = results[0].boxes
+        
+        # Validasi objek jalan sederhana berbasis warna/tekstur
+        img_hsv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
+        mean_s = img_hsv[:, :, 1].mean()
+        
+        if boxes is not None and len(boxes) == 0 and mean_s > 80:
+            st.error("❌ **Peringatan:** Bukan objek jalan, silakan arahkan kamera ke permukaan jalan yang sesuai.")
+        else:
+            p1_path, p2_path, p3_path = None, None, None
             
-            # Validasi objek jalan
-            img_hsv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
-            mean_s = img_hsv[:, :, 1].mean()
-            if boxes is not None and len(boxes) == 0 and mean_s > 80:
-                st.error("❌ **Peringatan:** Bukan objek jalan, silakan arahkan kamera ke permukaan jalan yang sesuai.")
-            else:
-                if boxes is not None and len(boxes) > 0:
-                    if "FP32" in model_type:
-                        p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
-                        tcol1, tcol2, tcol3 = st.columns(3)
-                        with tcol1:
-                            st.image(p1, channels="BGR", use_container_width=True)
-                            st.caption("1️⃣ Citra Asli & Bounding Box")
-                        with tcol2:
-                            st.image(p2, channels="BGR", use_container_width=True)
-                            st.caption("2️⃣ Peta Heatmap XAI")
-                        with tcol3:
-                            st.image(p3, channels="BGR", use_container_width=True)
-                            st.caption("3️⃣ Overlay Grad-CAM")
-                    else:
-                        res_plotted = results[0].plot()
-                        st.image(res_plotted, channels="BGR", use_container_width=True)
-
-                    st.info(f"⏱️ Waktu Inferensi: **{inference_time:.1f} ms**")
-                    class_names = results[0].names
-                    detected_labels = [class_names[int(c)] for c in boxes.cls]
-                    st.success(f"✅ Terdeteksi: {', '.join(set(detected_labels))}")
-                    
-                    # Hitung rata-rata confidence dengan aman
-                    conf_array = boxes.conf.cpu().numpy() if hasattr(boxes.conf, 'cpu') else boxes.conf
-                    avg_c = float(conf_array.mean()) if len(conf_array) > 0 else 0.0
-
-                    snapshot_summary = [{
-                        "Filename": "Kamera_Snapshot_Live.jpg",
-                        "Damage Type": ", ".join(set(detected_labels)),
-                        "Unit Count": len(boxes),
-                        "Avg Confidence": f"{avg_c:.2f}",
-                        "Inference Time (ms)": f"{inference_time:.1f}",
-                        "Paths": {"p1": None, "p2": None, "p3": None},
-                        "Show_Triptych": False
-                    }]
-                    # Anda bisa menyertakan fungsi builder PDF yang ringkas di sini jika diinginkan.
+            if boxes is not None and len(boxes) > 0:
+                if "FP32" in model_type:
+                    p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
+                    tcol1, tcol2, tcol3 = st.columns(3)
+                    with tcol1:
+                        st.image(p1, channels="BGR", use_container_width=True)
+                        st.caption("1️⃣ Citra Asli & Bounding Box")
+                    with tcol2:
+                        st.image(p2, channels="BGR", use_container_width=True)
+                        st.caption("2️⃣ Peta Heatmap XAI")
+                    with tcol3:
+                        st.image(p3, channels="BGR", use_container_width=True)
+                        st.caption("3️⃣ Overlay Grad-CAM")
+                        
+                    # Simpan path untuk PDF
+                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    cv2.imwrite(p1_path, p1)
+                    cv2.imwrite(p2_path, p2)
+                    cv2.imwrite(p3_path, p3)
                 else:
-                    st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Tidak ada kerusakan struktural terdeteksi).")
+                    res_plotted = results[0].plot()
+                    st.image(res_plotted, channels="BGR", use_container_width=True)
+                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                    cv2.imwrite(p1_path, res_plotted)
+
+                st.info(f"⏱️ Waktu Inferensi: **{inference_time:.1f} ms**")
+                class_names = results[0].names
+                detected_labels = [class_names[int(c)] for c in boxes.cls]
+                damage_desc_cam = ", ".join(set(detected_labels))
+                st.success(f"✅ Terdeteksi: {damage_desc_cam}")
+                
+                conf_array = boxes.conf.cpu().numpy() if hasattr(boxes.conf, 'cpu') else boxes.conf
+                avg_c = float(conf_array.mean()) if len(conf_array) > 0 else 0.0
+
+                snapshot_summary = [{
+                    "Filename": "Kamera_Snapshot_Live.jpg",
+                    "Damage Type": damage_desc_cam,
+                    "Unit Count": len(boxes),
+                    "Avg Confidence": f"{avg_c:.2f}",
+                    "Inference Time (ms)": f"{inference_time:.1f}",
+                    "Paths": {"p1": p1_path, "p2": p2_path, "p3": p3_path},
+                    "Show_Triptych": "FP32" in model_type and p2_path is not None
+                }]
+            else:
+                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Tidak ada kerusakan struktural terdeteksi).")
+                res_plotted = results[0].plot()
+                st.image(res_plotted, channels="BGR", use_container_width=True)
+                p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                cv2.imwrite(p1_path, res_plotted)
+                
+                snapshot_summary = [{
+                    "Filename": "Kamera_Snapshot_Live.jpg",
+                    "Damage Type": "Normal / Jalan Mulus",
+                    "Unit Count": 0,
+                    "Avg Confidence": "-",
+                    "Inference Time (ms)": f"{inference_time:.1f}",
+                    "Paths": {"p1": p1_path, "p2": None, "p3": None},
+                    "Show_Triptych": False
+                }]
+
+            # Tombol Ekspor PDF untuk Snapshot Kamera
+            st.markdown("---")
+            st.markdown("### 📥 Ekspor Laporan Hasil Tangkapan Kamera (.PDF)")
+            
+            def create_camera_pdf_report(summary_data):
+                pdf = PDFReport(model_type, conf_threshold)
+                pdf.add_page()
+                pdf.set_auto_page_break(auto=True, margin=15)
+                
+                pdf.set_font('helvetica', 'B', 10)
+                pdf.cell(0, 6, '1. Ringkasan Deteksi Snapshot Kamera', 0, 1, 'L')
+                
+                pdf.set_font('helvetica', 'B', 9)
+                pdf.set_fill_color(230, 230, 230)
+                pdf.cell(60, 6, 'Nama Berkas', 1, 0, 'C', True)
+                pdf.cell(50, 6, 'Jenis Kerusakan', 1, 0, 'C', True)
+                pdf.cell(30, 6, 'Jml Unit', 1, 0, 'C', True)
+                pdf.cell(25, 6, 'Conf. Avg', 1, 0, 'C', True)
+                pdf.cell(25, 6, 'Latensi', 1, 1, 'C', True)
+                
+                pdf.set_font('helvetica', '', 8)
+                for item in summary_data:
+                    pdf.cell(60, 6, str(item['Filename']), 1, 0, 'L')
+                    pdf.cell(50, 6, str(item['Damage Type']), 1, 0, 'L')
+                    pdf.cell(30, 6, str(item['Unit Count']), 1, 0, 'C')
+                    pdf.cell(25, 6, str(item['Avg Confidence']), 1, 0, 'C')
+                    pdf.cell(25, 6, f"{item['Inference Time (ms)']} ms", 1, 1, 'C')
+                
+                if summary_data[0]['Paths']['p1'] is not None:
+                    pdf.ln(6)
+                    pdf.set_font('helvetica', 'B', 10)
+                    pdf.cell(0, 6, '2. Lampiran Visual Hasil Tangkapan', 0, 1, 'L')
+                    y_pos = pdf.get_y()
+                    pdf.image(summary_data[0]['Paths']['p1'], x=10, y=y_pos, w=80)
+                    pdf.ln(50)
+                
+                return bytes(pdf.output())
+
+            cam_pdf_bytes = create_camera_pdf_report(snapshot_summary)
+            st.download_button(
+                label="📥 Unduh Laporan Snapshot Kamera (.PDF)",
+                data=cam_pdf_bytes,
+                file_name="Laporan_Snapshot_Kamera.pdf",
+                mime="application/pdf",
+            )
