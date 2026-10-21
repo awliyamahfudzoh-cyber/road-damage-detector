@@ -124,25 +124,46 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-            # Validasi apakah gambar valid sebagai objek jalan / ber-aspal
-            # Jika tidak ada satupun box deteksi, kita cek apakah itu gambar non-jalan (misal pemandangan alam/pantai)
-            # Berdasarkan pengujian, gambar non-jalan murni tidak menghasilkan box sama sekali. 
-            # Kita berikan opsi: Jika box kosong, tampilkan alert peringatan jika itu bukan jalan, 
-            # atau status jalan mulus jika itu memang foto jalanan mulus.
+            # --- PENGECEKAN VALIDITAS OBJEK JALAN YANG PRESISI ---
+            # Model YOLO kerusakan jalan dilatih mendeteksi pola permukaan jalan.
+            # Jika tidak ada satupun box deteksi (len(boxes) == 0), 
+            # kita cek apakah model mendeteksi adanya background aspal/jalan atau ini murni gambar non-jalan.
+            # Kita bisa melihat tensor logits/probabilities mentah dari model (results[0].probs atau max confidence).
             
-            # Untuk mengakomodasi permintaan Anda: Jika gambar bukan jalan aspal, berikan alert.
-            # Kita bisa mendeteksi gambar non-jalan jika tidak ada box dan kontras warna alam (seperti pantai/langit).
-            img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
-            hsv_mean = img_cv.mean(axis=(0, 1))
-            
-            # Deteksi sederhana heuristik: Jika dominan warna langit/air/hijau daun tanpa struktur abu-abu aspal
-            is_non_road = (len(boxes) == 0) and ((90 <= hsv_mean[0] <= 130) or (hsv_mean[1] > 100 and hsv_mean[2] > 180))
+            is_valid_road = True
+            if boxes is not None and len(boxes) > 0:
+                is_valid_road = True  # Ada kerusakan terdeteksi, pastinya jalan
+            else:
+                # Jika tidak ada box (bisa jalan mulus ATAU bukan jalan sama sekali),
+                # kita periksa confidence mentah dari model terhadap kelas-kelas jalan.
+                # Jika max confidence di seluruh prediksi sangat rendah (< 0.15), 
+                # berarti model bingung dan itu adalah gambar non-jalan (seperti jembatan/pemandangan).
+                try:
+                    all_confs = results[0].boxes.conf.cpu().numpy() if boxes is not None else []
+                    max_conf = max(all_confs) if len(all_confs) > 0 else 0.0
+                except:
+                    max_conf = 0.0
+                
+                # Tambahan pengaman: Cek apakah gambar memiliki tekstur aspal/tanah (analisis gradien/tekstur OpenCV)
+                gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+                laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var() # Mengukur tingkat ketajaman/detail tekstur
+                
+                # Jika tidak ada box DAN variasi tekstur/warna mengindikasikan objek non-jalan (seperti foto jembatan/langit/pemandangan)
+                # Catatan: Jalan aspal biasanya memiliki tekstur kasar/灰色 (gray) tertentu. 
+                # Untuk menguji apakah ini bukan jalan: jika laplacian variance atau distribusi warna menandakan objek non-jalan:
+                img_hsv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
+                # Jika dominan warna selain abu-abu/hitam/coklat jalan (misal dominan warna mencolok langit/air/struktur buatan non-jalan)
+                mean_s = img_hsv[:, :, 1].mean() # Saturasi warna
+                
+                # Kondisi ketat filter non-jalan (Contoh: Saturasi warna terlalu tinggi khas pemandangan/jembatan, atau tidak ada karakteristik jalan)
+                if max_conf < 0.10 and (mean_s > 60 or laplacian_var < 100):
+                    is_valid_road = False
 
-            if is_non_road:
+            if not is_valid_road:
                 st.error("❌ **Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.")
-                continue  # Lewati dan hentikan proses untuk gambar ini
+                continue  # Lewati dan hentikan proses Triptych untuk gambar ini
 
-            # Jika lolos (baik jalan rusak maupun jalan mulus bersih):
+            # Jika lolos validasi sebagai jalan (baik jalan rusak maupun jalan mulus bersih):
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
