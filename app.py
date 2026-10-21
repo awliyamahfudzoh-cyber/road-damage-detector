@@ -377,7 +377,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             video_bytes = f.read()
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
                         
-               st.markdown("---")
+                st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
                 
                 # --- MENYIMPAN STATUS SLIDER DENGAN SESSION STATE ---
