@@ -104,7 +104,7 @@ class PDFReport(FPDF):
         self.cell(0, 8, f'Halaman {self.page_no()}', 0, 0, 'C')
 
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
+# --- MENU 1: CITRA / GAMBAR (VALIDASI KETAT KHUSUS JALAN ASPAL) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -117,14 +117,39 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             st.markdown(f"#### Berkas #{idx+1}: `{uploaded_file.name}`")
             image = Image.open(uploaded_file)
             
-            with st.spinner(f"Memproses {uploaded_file.name}..."):
+            # --- FILTER PRE-PROCESSING: DETEKSI APAKAH INI JALAN ATAU BUKAN ---
+            img_np = np.array(image)
+            img_hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+            img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+            
+            # Ekstraksi parameter fitur citra
+            mean_brightness = img_hsv[:, :, 2].mean()  # Tingkat kecerahan (Brightness)
+            mean_saturation = img_hsv[:, :, 1].mean()  # Saturasi warna
+            laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var() # Tingkat ketajaman/tekstur
+            
+            # ATURAN FILTER: 
+            # Dokumen/CV/Surat/Foto Wajah biasanya memiliki kecerahan sangat tinggi (kertas putih > 200) 
+            # dan saturasi warna rendah atau sangat mencolok tidak seperti permukaan aspal/jalan.
+            # Jalan aspal/beton asli memiliki batas kecerahan dan tekstur tertentu.
+            is_non_road = False
+            
+            # Jika gambar sangat terang bagaikan kertas dokumen putih bersih dan minim tekstur acak aspal:
+            if mean_brightness > 205 and mean_saturation < 40 and laplacian_var < 90:
+                is_non_road = True
+            
+            # Jika terdeteksi bukan jalan (seperti CV Anda sebelumnya), blokir instan!
+            if is_non_road:
+                st.error("❌ **Peringatan Sistem:** Berkas terdeteksi bukan merupakan objek perkerasan jalan (Contoh: Dokumen/CV/Foto non-jalan). Sistem hanya memproses analisis permukaan jalan aspal/beton.")
+                continue  # Hentikan proses untuk file ini, tidak akan lanjut ke Triptych/Model
+
+            # --- JIKA LOLOS SEBAGAI JALAN (MULUS MAUPUN RUSAK) ---
+            with st.spinner(f"Memproses {uploaded_file.name} dengan YOLOv10..."):
                 start_time = time.time()
                 results = model(image, conf=conf_threshold)
                 inference_time = (time.time() - start_time) * 1000
 
             boxes = results[0].boxes
             
-            # --- PROSES VISUALISASI TRIPTYCH UNTUK SEMUA CITRA ---
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
