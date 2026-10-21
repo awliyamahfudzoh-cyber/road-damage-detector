@@ -274,7 +274,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 # =========================================================================
 # --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
 # =========================================================================
-elif input_type == "Video Rekaman":
+elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     if uploaded_video is not None:
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_video.read())
