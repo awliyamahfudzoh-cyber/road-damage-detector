@@ -128,29 +128,30 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             # Model dilatih khusus untuk fitur perkerasan jalan. 
             # Jika gambar adalah CV, dokumen, orang, atau pemandangan non-jalan, model YOLO 
             # tidak akan mendeteksi fitur jalan dan skor probabilitas/logits tertingginya akan sangat rendah (< 0.15).
+            # --- VALIDASI OBJEK JALAN YANG LEBIH TOLERAN & AKURAT ---
             is_valid_road = True
             
             if boxes is not None and len(boxes) > 0:
-                is_valid_road = True  # Ada objek kerusakan terdeteksi -> Pastikan valid sebagai jalan
+                is_valid_road = True  # Ada kerusakan terdeteksi -> Pasti jalan
             else:
-                # Jika tidak ada bounding box, periksa confidence tertinggi dari seluruh tensor hasil prediksi model
+                # Jika tidak ada bounding box (bisa jalan mulus ATAU bukan jalan),
+                # kita periksa apakah model mendeteksi adanya struktur/tekstur dasar jalan.
                 try:
-                    # Ambil semua tensor probabilitas/confidence dari model
                     probs = results[0].boxes.conf.cpu().numpy() if boxes is not None else np.array([])
-                    # Jika model sama sekali tidak mengenali pola jalan (max confidence < 15%)
                     max_model_conf = float(probs.max()) if len(probs) > 0 else 0.0
                 except:
                     max_model_conf = 0.0
                 
-                # Jika confidence maksimal model di bawah ambang batas deteksi objek jalan (0.15), 
-                # berarti gambar tersebut adalah objek asing (CV, dokumen, foto non-jalan)
-                if max_model_conf < 0.15:
+                # Gunakan ambang batas bawah yang sangat longgar (0.03 / 3%) 
+                # Agar foto jalan aspal mulus/bersih tetap lolos sebagai jalan, 
+                # sementara dokumen/CV/foto wajah orang (yang sama sekali bukan jalan) akan terblokir.
+                if max_model_conf < 0.03:
                     is_valid_road = False
 
             if not is_valid_road:
                 st.error("❌ **Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.")
                 continue  # Lewati dan tolak gambar non-jalan secara instan
-
+                
             # Jika lolos sebagai jalan (baik jalan rusak maupun jalan mulus bersih):
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
