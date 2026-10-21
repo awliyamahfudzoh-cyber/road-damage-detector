@@ -124,35 +124,9 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-            # --- VALIDASI BERBASIS MODEL YOLO MURNI ---
-            # Model dilatih khusus untuk fitur perkerasan jalan. 
-            # Jika gambar adalah CV, dokumen, orang, atau pemandangan non-jalan, model YOLO 
-            # tidak akan mendeteksi fitur jalan dan skor probabilitas/logits tertingginya akan sangat rendah (< 0.15).
-            # --- VALIDASI OBJEK JALAN YANG LEBIH TOLERAN & AKURAT ---
-            is_valid_road = True
-            
-            if boxes is not None and len(boxes) > 0:
-                is_valid_road = True  # Ada kerusakan terdeteksi -> Pasti jalan
-            else:
-                # Jika tidak ada bounding box (bisa jalan mulus ATAU bukan jalan),
-                # kita periksa apakah model mendeteksi adanya struktur/tekstur dasar jalan.
-                try:
-                    probs = results[0].boxes.conf.cpu().numpy() if boxes is not None else np.array([])
-                    max_model_conf = float(probs.max()) if len(probs) > 0 else 0.0
-                except:
-                    max_model_conf = 0.0
-                
-                # Gunakan ambang batas bawah yang sangat longgar (0.03 / 3%) 
-                # Agar foto jalan aspal mulus/bersih tetap lolos sebagai jalan, 
-                # sementara dokumen/CV/foto wajah orang (yang sama sekali bukan jalan) akan terblokir.
-                if max_model_conf < 0.03:
-                    is_valid_road = False
-
-            if not is_valid_road:
-                st.error("❌ **Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.")
-                continue  # Lewati dan tolak gambar non-jalan secara instan
-                
-            # Jika lolos sebagai jalan (baik jalan rusak maupun jalan mulus bersih):
+            # --- PROSES TAMPILAN & TRIPTYCH UNTUK SEMUA CITRA JALAN ---
+            # Model YOLO dilatih untuk mendeteksi konteks perkerasan jalan. 
+            # Citra jalan (baik rusak maupun mulus bersih) akan diproses langsung tanpa pemblokiran keliru.
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
@@ -200,6 +174,17 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     "Damage Type": damage_desc, 
                     "Unit Count": total_units,
                     "Avg Confidence": f"{avg_conf_all:.2f}",
+                    "Inference Time (ms)": f"{inference_time:.1f}",
+                    "Paths": saved_paths,
+                    "Show_Triptych": True
+                })
+            else:
+                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Tidak ada kerusakan struktural terdeteksi).")
+                global_summary.append({
+                    "Filename": uploaded_file.name, 
+                    "Damage Type": "Normal / Jalan Mulus", 
+                    "Unit Count": 0,
+                    "Avg Confidence": "-",
                     "Inference Time (ms)": f"{inference_time:.1f}",
                     "Paths": saved_paths,
                     "Show_Triptych": True
