@@ -542,13 +542,15 @@ elif input_type == "Kamera / Live Streaming (Real-Time)":
                     detected_labels = [class_names[int(c)] for c in boxes.cls]
                     st.success(f"✅ Terdeteksi: {', '.join(set(detected_labels))}")
                     
-                    # Tombol unduh laporan PDF instan untuk snapshot kamera
-                    # (Menggunakan fungsi PDFReport yang sama)
+                    # Hitung rata-rata confidence dengan aman
+                    conf_array = boxes.conf.cpu().numpy() if hasattr(boxes.conf, 'cpu') else boxes.conf
+                    avg_c = float(conf_array.mean()) if len(conf_array) > 0 else 0.0
+
                     snapshot_summary = [{
                         "Filename": "Kamera_Snapshot_Live.jpg",
                         "Damage Type": ", ".join(set(detected_labels)),
                         "Unit Count": len(boxes),
-                        "Avg Confidence": f"{float(boxes.conf.mean():.2f)}",
+                        "Avg Confidence": f"{avg_c:.2f}",
                         "Inference Time (ms)": f"{inference_time:.1f}",
                         "Paths": {"p1": None, "p2": None, "p3": None},
                         "Show_Triptych": False
