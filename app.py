@@ -124,9 +124,27 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-            # --- PROSES TAMPILAN & TRIPTYCH UNTUK SEMUA CITRA JALAN ---
-            # Model YOLO dilatih untuk mendeteksi konteks perkerasan jalan. 
-            # Citra jalan (baik rusak maupun mulus bersih) akan diproses langsung tanpa pemblokiran keliru.
+            # --- FILTER PENGAMAN KHUSUS DOKUMEN / CV / KERTAS ---
+            # Dokumen/CV biasanya memiliki latar belakang putih/terang yang sangat dominan (Pixel RGB tinggi)
+            # dan tingkat variasi tekstur aspal yang rendah.
+            img_cv_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
+            img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+            
+            # Hitung persentase piksel terang (putih/kertas) dan saturasi
+            mean_v = img_cv_np[:, :, 2].mean() # Nilai brightness/kecerahan
+            mean_s = img_cv_np[:, :, 1].mean() # Saturasi warna
+            laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var() # Ketajaman tekstur
+            
+            # Ciri khas dokumen CV/Surat: Sangat terang (brightness tinggi > 200) dan minim tekstur acak aspal
+            is_document_or_non_road = False
+            if mean_v > 210 and mean_s < 30 and laplacian_var < 80 and (boxes is None or len(boxes) == 0):
+                is_document_or_non_road = True
+
+            if is_document_or_non_road:
+                st.error("❌ **Peringatan:** Berkas terdeteksi sebagai dokumen/CV (bukan objek jalan perkerasan). Silakan unggah citra jalan yang sesuai.")
+                continue  # Tolak dokumen dan hentikan proses untuk file ini
+
+            # --- PROSES TAMPILAN & TRIPTYCH UNTUK CITRA JALAN (MULUS / RUSAK) ---
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
