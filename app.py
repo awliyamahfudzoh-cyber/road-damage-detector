@@ -31,7 +31,7 @@ model_type = st.sidebar.selectbox(
 
 input_type = st.sidebar.radio(
     "Pilih Jenis Masukan Media",
-    ("Citra / Gambar (Multi-Upload)", "Studio Pemantauan Video (Timeline Mode)", "Kamera / Live Streaming (Real-Time)")
+    ("Citra / Gambar (Multi-Upload)", "Video Rekaman", "Kamera / Live Streaming (Real-Time)")
 )
 
 conf_threshold = st.sidebar.slider("Confidence Threshold (Filter Bayangan/Noise)", 0.2, 0.9, 0.45, 0.05)
@@ -44,7 +44,7 @@ uploaded_video = None
 
 if input_type == "Citra / Gambar (Multi-Upload)":
     uploaded_files = st.sidebar.file_uploader("Pilih file gambar (.jpg, .png, .jpeg)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
-elif input_type == "Studio Pemantauan Video (Timeline Mode)":
+elif input_type == "Video Rekaman":
     uploaded_video = st.sidebar.file_uploader("Pilih file video (.mp4, .avi, .mov)", type=["mp4", "avi", "mov"])
 
 # Path Model
@@ -125,37 +125,22 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             boxes = results[0].boxes
             
             # --- PENGECEKAN VALIDITAS OBJEK JALAN YANG PRESISI ---
-            # Model YOLO kerusakan jalan dilatih mendeteksi pola permukaan jalan.
-            # Jika tidak ada satupun box deteksi (len(boxes) == 0), 
-            # kita cek apakah model mendeteksi adanya background aspal/jalan atau ini murni gambar non-jalan.
-            # Kita bisa melihat tensor logits/probabilities mentah dari model (results[0].probs atau max confidence).
-            
             is_valid_road = True
             if boxes is not None and len(boxes) > 0:
                 is_valid_road = True  # Ada kerusakan terdeteksi, pastinya jalan
             else:
-                # Jika tidak ada box (bisa jalan mulus ATAU bukan jalan sama sekali),
-                # kita periksa confidence mentah dari model terhadap kelas-kelas jalan.
-                # Jika max confidence di seluruh prediksi sangat rendah (< 0.15), 
-                # berarti model bingung dan itu adalah gambar non-jalan (seperti jembatan/pemandangan).
                 try:
                     all_confs = results[0].boxes.conf.cpu().numpy() if boxes is not None else []
                     max_conf = max(all_confs) if len(all_confs) > 0 else 0.0
                 except:
                     max_conf = 0.0
                 
-                # Tambahan pengaman: Cek apakah gambar memiliki tekstur aspal/tanah (analisis gradien/tekstur OpenCV)
                 gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-                laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var() # Mengukur tingkat ketajaman/detail tekstur
+                laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
                 
-                # Jika tidak ada box DAN variasi tekstur/warna mengindikasikan objek non-jalan (seperti foto jembatan/langit/pemandangan)
-                # Catatan: Jalan aspal biasanya memiliki tekstur kasar/灰色 (gray) tertentu. 
-                # Untuk menguji apakah ini bukan jalan: jika laplacian variance atau distribusi warna menandakan objek non-jalan:
                 img_hsv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
-                # Jika dominan warna selain abu-abu/hitam/coklat jalan (misal dominan warna mencolok langit/air/struktur buatan non-jalan)
-                mean_s = img_hsv[:, :, 1].mean() # Saturasi warna
+                mean_s = img_hsv[:, :, 1].mean()
                 
-                # Kondisi ketat filter non-jalan (Contoh: Saturasi warna terlalu tinggi khas pemandangan/jembatan, atau tidak ada karakteristik jalan)
                 if max_conf < 0.10 and (mean_s > 60 or laplacian_var < 100):
                     is_valid_road = False
 
@@ -163,7 +148,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 st.error("❌ **Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.")
                 continue  # Lewati dan hentikan proses Triptych untuk gambar ini
 
-            # Jika lolos validasi sebagai jalan (baik jalan rusak maupun jalan mulus bersih):
+            # Jika lolos validasi sebagai jalan:
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
@@ -290,7 +275,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
         st.info("👈 Silakan unggah satu atau beberapa file gambar jalan melalui panel **sidebar di sebelah kiri**.")
         
 # =========================================================================
-# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
+# --- MENU 2: VIDEO REKAMAN (TIMELINE & ESTIMASI PANJANG RUAS JALAN) ---
 # =========================================================================
 elif input_type == "Video Rekaman":
     if uploaded_video is not None:
@@ -359,7 +344,6 @@ elif input_type == "Video Rekaman":
 
                         timestamp_sec = processed_frames / fps
                         
-                        # Generate Triptych untuk Snapshot Video jika FP32
                         if "FP32" in model_type:
                             pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
@@ -394,15 +378,14 @@ elif input_type == "Video Rekaman":
                         with open(output_path, 'rb') as f:
                             video_bytes = f.read()
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
-                        
+                
                 st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
                 
-                # Slider interaktif untuk kecepatan survei (berguna untuk penyesuaian di sidang skripsi)
+                # Slider kecepatan rata-rata survei lapangan (km/jam)
                 survey_speed_kmh = st.slider("Kecepatan Rata-rata Kendaraan Survei (km/jam)", min_value=5.0, max_value=40.0, value=18.0, step=1.0)
-                survey_speed_ms = survey_speed_kmh / 3.6  # Konversi km/jam ke meter per detik (m/s)
+                survey_speed_ms = survey_speed_kmh / 3.6  # Konversi ke meter per detik
                 
-                # Perhitungan fisika jarak ruas jalan
                 estimated_road_length = duration * survey_speed_ms
                 
                 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
@@ -441,6 +424,7 @@ elif input_type == "Video Rekaman":
                     metrics_data = [
                         ("Durasi Video (s)", f"{dur:.2f}"),
                         ("Rata-rata Latensi (ms/frame)", f"{lat:.1f}"),
+                        ("Kecepatan Survei (km/jam)", f"{survey_speed_kmh:.1f}"),
                         ("Estimasi Panjang Ruas (m)", f"{r_len:.1f}"),
                         ("Total Titik Kerusakan", f"{tot_titik}")
                     ]
@@ -482,7 +466,7 @@ elif input_type == "Video Rekaman":
 
                 video_pdf_bytes = create_video_pdf_report(duration, avg_latency, estimated_road_length, total_titik, total_damage_accumulated, snapshots_data)
                 st.download_button(
-                    label="📥 Unduh Laporan Pemantauan Video (.PDF)",
+                    label="📥 Unduh Laporan Pemantauan Ruas Jalan (.PDF)",
                     data=video_pdf_bytes,
                     file_name="Laporan_Pemantauan_Video_Jalan.pdf",
                     mime="application/pdf",
@@ -498,7 +482,6 @@ elif input_type == "Video Rekaman":
                             st.caption(f"⏱️ Poin Timeline: {snap['time']} | Klasifikasi: {snap['damages']}")
     else:
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
-
 
 # =========================================================================
 # --- MENU 3: KAMERA / LIVE STREAMING (SNAPSHOT & LAPORAN PDF) ---
@@ -518,7 +501,7 @@ elif input_type == "Kamera / Live Streaming (Real-Time)":
 
         boxes = results[0].boxes
         
-        # Validasi objek jalan sederhana berbasis warna/tekstur
+        # Validasi objek jalan sederhana
         img_hsv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
         mean_s = img_hsv[:, :, 1].mean()
         
@@ -541,7 +524,6 @@ elif input_type == "Kamera / Live Streaming (Real-Time)":
                         st.image(p3, channels="BGR", use_container_width=True)
                         st.caption("3️⃣ Overlay Grad-CAM")
                         
-                    # Simpan path untuk PDF
                     p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
                     p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
                     p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
