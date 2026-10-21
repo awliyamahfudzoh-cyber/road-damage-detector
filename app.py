@@ -291,6 +291,23 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
         st.markdown("---")
         
+        # --- INISIALISASI & PENEMPATAN SLIDER DI LUAR TOMBOL RENDER ---
+        st.markdown("### 📊 Pengaturan Parameter Fisika Survei Jalan")
+        if "survey_speed_kmh" not in st.session_state:
+            st.session_state.survey_speed_kmh = 18.0
+
+        survey_speed_kmh = st.slider(
+            "Kecepatan Rata-rata Kendaraan Survei (km/jam)", 
+            min_value=5.0, 
+            max_value=40.0, 
+            value=st.session_state.survey_speed_kmh, 
+            step=1.0,
+            key="survey_speed_slider"
+        )
+        st.session_state.survey_speed_kmh = survey_speed_kmh
+        
+        st.markdown("---")
+        
         if st.button("🚀 Render & Jalankan Studio Analisis Linimasa"):
             with st.spinner("Memproses bingkai video studio..."):
                 cap = cv2.VideoCapture(video_path)
@@ -341,7 +358,6 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
                         timestamp_sec = processed_frames / fps
                         
-                        # Generate Triptych untuk Snapshot Video jika FP32
                         if "FP32" in model_type:
                             pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
@@ -376,125 +392,120 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                         with open(output_path, 'rb') as f:
                             video_bytes = f.read()
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
-                        
-                st.markdown("---")
-                st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
                 
-                # --- MENYIMPAN STATUS SLIDER DENGAN SESSION STATE ---
-                if "survey_speed_kmh" not in st.session_state:
-                    st.session_state.survey_speed_kmh = 18.0
+                # Simpan hasil render ke session_state agar metrik & PDF tidak hilang saat interaksi lain
+                st.session_state.video_rendered = True
+                st.session_state.duration = duration
+                st.session_state.avg_latency = avg_latency
+                st.session_state.total_damage_accumulated = total_damage_accumulated
+                st.session_state.snapshots_data = snapshots_data
 
-                # Slider interaktif dengan key session state agar nilainya persisten
-                survey_speed_kmh = st.slider(
-                    "Kecepatan Rata-rata Kendaraan Survei (km/jam)", 
-                    min_value=5.0, 
-                    max_value=40.0, 
-                    value=st.session_state.survey_speed_kmh, 
-                    step=1.0,
-                    key="survey_speed_slider"
-                )
-                
-                # Simpan perubahan nilai slider ke session state
-                st.session_state.survey_speed_kmh = survey_speed_kmh
-                survey_speed_ms = survey_speed_kmh / 3.6  # Konversi ke meter per detik (m/s)
-                
-                # Perhitungan fisika jarak ruas jalan
-                estimated_road_length = duration * survey_speed_ms
+        # --- BAGIAN TAMPILAN METRIK & PDF YANG BERTAHAN DI LUAR TOMBOL RENDER ---
+        if st.session_state.get("video_rendered", False):
+            st.markdown("---")
+            st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
             
-                mcol1, mcol2, mcol3, mcol4 = st.columns(4)
-                mcol1.metric("Durasi Video", f"{duration:.2f} s")
-                mcol2.metric("Rata-rata Latensi", f"{avg_latency:.1f} ms/frame")
-                mcol3.metric("Estimasi Panjang Ruas", f"{estimated_road_length:.1f} Meter")
-                total_titik = sum(total_damage_accumulated.values())
-                mcol4.metric("Total Kerusakan", f"{total_titik} Titik")
-                
-                st.caption(f"*Catatan Metodologi: Estimasi panjang ruas dihitung menggunakan model kinematika dasar ($s = v \times t$) berdasarkan durasi video dan kecepatan rata-rata survei sebesar {survey_speed_kmh} km/jam ({survey_speed_ms:.2f} m/s).")
+            dur = st.session_state.duration
+            avg_lat = st.session_state.avg_latency
+            tot_dam = st.session_state.total_damage_accumulated
+            snaps = st.session_state.snapshots_data
+            
+            survey_speed_ms = st.session_state.survey_speed_kmh / 3.6
+            estimated_road_length = dur * survey_speed_ms
+            
+            mcol1, mcol2, mcol3, mcol4 = st.columns(4)
+            mcol1.metric("Durasi Video", f"{dur:.2f} s")
+            mcol2.metric("Rata-rata Latensi", f"{avg_lat:.1f} ms/frame")
+            mcol3.metric("Estimasi Panjang Ruas", f"{estimated_road_length:.1f} Meter")
+            total_titik = sum(tot_dam.values())
+            mcol4.metric("Total Kerusakan", f"{total_titik} Titik")
+            
+            st.caption(f"*Catatan Metodologi: Estimasi panjang ruas dihitung menggunakan model kinematika dasar ($s = v \\times t$) berdasarkan durasi video dan kecepatan rata-rata survei sebesar {st.session_state.survey_speed_kmh} km/jam ({survey_speed_ms:.2f} m/s).")
 
-                if total_damage_accumulated:
-                    r_cols = st.columns(len(total_damage_accumulated))
-                    for idx, (k, v) in enumerate(total_damage_accumulated.items()):
-                        with r_cols[idx % len(r_cols)]:
-                            st.metric(label=f"Jenis: {k}", value=f"{v} Titik")
-                else:
-                    st.warning("⚠️ Peringatan: Tidak ada objek jalan atau kerusakan signifikan terdeteksi pada video ini.")
+            if tot_dam:
+                r_cols = st.columns(len(tot_dam))
+                for idx, (k, v) in enumerate(tot_dam.items()):
+                    with r_cols[idx % len(r_cols)]:
+                        st.metric(label=f"Jenis: {k}", value=f"{v} Titik")
+            else:
+                st.warning("⚠️ Peringatan: Tidak ada objek jalan atau kerusakan signifikan terdeteksi pada video ini.")
 
-                st.markdown("---")
-                st.markdown("### 📥 Ekspor Laporan Pemantauan Ruas Jalan (.PDF)")
+            st.markdown("---")
+            st.markdown("### 📥 Ekspor Laporan Pemantauan Ruas Jalan (.PDF)")
+            
+            def create_video_pdf_report(dur, lat, r_len, tot_titik, damage_dict, snaps):
+                pdf = PDFReport(model_type, conf_threshold)
+                pdf.add_page()
+                pdf.set_auto_page_break(auto=True, margin=15)
                 
-                def create_video_pdf_report(dur, lat, r_len, tot_titik, damage_dict, snaps):
-                    pdf = PDFReport(model_type, conf_threshold)
-                    pdf.add_page()
-                    pdf.set_auto_page_break(auto=True, margin=15)
-                    
+                pdf.set_font('helvetica', 'B', 10)
+                pdf.cell(0, 6, '1. Ringkasan Metrik Pemantauan Ruas Jalan', 0, 1, 'L')
+                
+                pdf.set_font('helvetica', 'B', 9)
+                pdf.set_fill_color(230, 230, 230)
+                pdf.cell(100, 6, 'Parameter Pengujian', 1, 0, 'C', True)
+                pdf.cell(80, 6, 'Nilai / Kuantitas', 1, 1, 'C', True)
+                
+                metrics_data = [
+                    ("Durasi Video (s)", f"{dur:.2f}"),
+                    ("Rata-rata Latensi (ms/frame)", f"{lat:.1f}"),
+                    ("Estimasi Panjang Ruas (m)", f"{r_len:.1f}"),
+                    ("Total Titik Kerusakan", f"{tot_titik}")
+                ]
+                for k, v in damage_dict.items():
+                    metrics_data.append((f"Jenis Kerusakan: {k}", f"{v} Titik"))
+
+                pdf.set_font('helvetica', '', 9)
+                for k, v in metrics_data:
+                    pdf.cell(100, 6, k, 1, 0, 'L')
+                    pdf.cell(80, 6, v, 1, 1, 'C')
+
+                if snaps:
+                    pdf.ln(6)
                     pdf.set_font('helvetica', 'B', 10)
-                    pdf.cell(0, 6, '1. Ringkasan Metrik Pemantauan Ruas Jalan', 0, 1, 'L')
+                    pdf.cell(0, 6, '2. Lampiran Hasil Snapshot (Bounding Box)', 0, 1, 'L')
                     
-                    pdf.set_font('helvetica', 'B', 9)
-                    pdf.set_fill_color(230, 230, 230)
-                    pdf.cell(100, 6, 'Parameter Pengujian', 1, 0, 'C', True)
-                    pdf.cell(80, 6, 'Nilai / Kuantitas', 1, 1, 'C', True)
-                    
-                    metrics_data = [
-                        ("Durasi Video (s)", f"{dur:.2f}"),
-                        ("Rata-rata Latensi (ms/frame)", f"{lat:.1f}"),
-                        ("Estimasi Panjang Ruas (m)", f"{r_len:.1f}"),
-                        ("Total Titik Kerusakan", f"{tot_titik}")
-                    ]
-                    for k, v in damage_dict.items():
-                        metrics_data.append((f"Jenis Kerusakan: {k}", f"{v} Titik"))
-
-                    pdf.set_font('helvetica', '', 9)
-                    for k, v in metrics_data:
-                        pdf.cell(100, 6, k, 1, 0, 'L')
-                        pdf.cell(80, 6, v, 1, 1, 'C')
-
-                    if snaps:
-                        pdf.ln(6)
-                        pdf.set_font('helvetica', 'B', 10)
-                        pdf.cell(0, 6, '2. Lampiran Hasil Snapshot (Bounding Box)', 0, 1, 'L')
+                    for s in snaps:
+                        pdf.set_font('helvetica', 'I', 8)
+                        pdf.cell(0, 5, f"Waktu: {s['time']} | Klasifikasi: {s['damages']}", 0, 1, 'L')
                         
-                        for s in snaps:
-                            pdf.set_font('helvetica', 'I', 8)
-                            pdf.cell(0, 5, f"Waktu: {s['time']} | Klasifikasi: {s['damages']}", 0, 1, 'L')
+                        if s['Is_FP32'] and s['paths']['p2'] is not None:
+                            y_pos = pdf.get_y()
+                            pdf.image(s['paths']['p1'], x=10, y=y_pos, w=60)
+                            pdf.image(s['paths']['p2'], x=75, y=y_pos, w=60)
+                            pdf.image(s['paths']['p3'], x=140, y=y_pos, w=60)
                             
-                            if s['Is_FP32'] and s['paths']['p2'] is not None:
-                                y_pos = pdf.get_y()
-                                pdf.image(s['paths']['p1'], x=10, y=y_pos, w=60)
-                                pdf.image(s['paths']['p2'], x=75, y=y_pos, w=60)
-                                pdf.image(s['paths']['p3'], x=140, y=y_pos, w=60)
-                                
-                                pdf.set_y(y_pos + 42)
-                                pdf.set_font('helvetica', 'I', 6)
-                                pdf.cell(60, 4, '1. Bounding Box', 0, 0, 'C')
-                                pdf.cell(65, 4, '2. Heatmap XAI', 0, 0, 'C')
-                                pdf.cell(65, 4, '3. Overlay Grad-CAM', 0, 1, 'C')
-                                pdf.ln(3)
-                            else:
-                                if os.path.exists(s['paths']['p1']):
-                                    pdf.image(s['paths']['p1'], w=90)
-                                    pdf.ln(4)
+                            pdf.set_y(y_pos + 42)
+                            pdf.set_font('helvetica', 'I', 6)
+                            pdf.cell(60, 4, '1. Bounding Box', 0, 0, 'C')
+                            pdf.cell(65, 4, '2. Heatmap XAI', 0, 0, 'C')
+                            pdf.cell(65, 4, '3. Overlay Grad-CAM', 0, 1, 'C')
+                            pdf.ln(3)
+                        else:
+                            if os.path.exists(s['paths']['p1']):
+                                pdf.image(s['paths']['p1'], w=90)
+                                pdf.ln(4)
 
-                    return bytes(pdf.output())
+                return bytes(pdf.output())
 
-                video_pdf_bytes = create_video_pdf_report(duration, avg_latency, estimated_road_length, total_titik, total_damage_accumulated, snapshots_data)
-                st.download_button(
-                    label="📥 Unduh Laporan Pemantauan Video (.PDF)",
-                    data=video_pdf_bytes,
-                    file_name="Laporan_Pemantauan_Video_Jalan.pdf",
-                    mime="application/pdf",
-                )
+            video_pdf_bytes = create_video_pdf_report(dur, avg_lat, estimated_road_length, total_titik, tot_dam, snaps)
+            st.download_button(
+                label="📥 Unduh Laporan Pemantauan Video (.PDF)",
+                data=video_pdf_bytes,
+                file_name="Laporan_Pemantauan_Video_Jalan.pdf",
+                mime="application/pdf",
+            )
 
-                if snapshots_data:
-                    st.markdown("---")
-                    st.markdown("### ⏱️ Timeline & Titik Kritis Kerusakan (Video Timeline)")
-                    s_cols = st.columns(3)
-                    for i, snap in enumerate(snapshots_data):
-                        with s_cols[i % 3]:
-                            st.image(snap["frame"], channels="BGR", use_container_width=True)
-                            st.caption(f"⏱️ Poin Timeline: {snap['time']} | Klasifikasi: {snap['damages']}")
+            if snaps:
+                st.markdown("---")
+                st.markdown("### ⏱️ Timeline & Titik Kritis Kerusakan (Video Timeline)")
+                s_cols = st.columns(3)
+                for i, snap in enumerate(snaps):
+                    with s_cols[i % 3]:
+                        st.image(snap["frame"], channels="BGR", use_container_width=True)
+                        st.caption(f"⏱️ Poin Timeline: {snap['time']} | Klasifikasi: {snap['damages']}")
     else:
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
-
 
 # =========================================================================
 # --- MENU 3: KAMERA / LIVE STREAMING (SNAPSHOT & LAPORAN PDF) ---
