@@ -396,16 +396,23 @@ elif input_type == "Video Rekaman":
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
                         
                 st.markdown("---")
-                st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
+                st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
+                
+                # Slider interaktif untuk kecepatan survei (berguna untuk penyesuaian di sidang skripsi)
+                survey_speed_kmh = st.slider("Kecepatan Rata-rata Kendaraan Survei (km/jam)", min_value=5.0, max_value=40.0, value=18.0, step=1.0)
+                survey_speed_ms = survey_speed_kmh / 3.6  # Konversi km/jam ke meter per detik (m/s)
+                
+                # Perhitungan fisika jarak ruas jalan
+                estimated_road_length = duration * survey_speed_ms
                 
                 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
                 mcol1.metric("Durasi Video", f"{duration:.2f} s")
                 mcol2.metric("Rata-rata Latensi", f"{avg_latency:.1f} ms/frame")
-                estimated_road_length = duration * 5.0 
-                mcol3.metric("Estimasi Panjang Ruas*", f"{estimated_road_length:.1f} Meter")
+                mcol3.metric("Estimasi Panjang Ruas", f"{estimated_road_length:.1f} Meter")
                 total_titik = sum(total_damage_accumulated.values())
                 mcol4.metric("Total Kerusakan", f"{total_titik} Titik")
-                st.caption("*Catatan: Estimasi panjang ruas dihitung menggunakan proksi waktu tempuh rata-rata standar survei (5 m/s).")
+                
+                st.caption(f"*Catatan Metodologi: Estimasi panjang ruas dihitung menggunakan model kinematika dasar ($s = v \times t$) berdasarkan durasi video dan kecepatan rata-rata survei sebesar {survey_speed_kmh} km/jam ({survey_speed_ms:.2f} m/s).")
 
                 if total_damage_accumulated:
                     r_cols = st.columns(len(total_damage_accumulated))
