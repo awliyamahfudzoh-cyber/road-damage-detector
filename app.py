@@ -292,7 +292,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         st.markdown("---")
         
         # --- INISIALISASI & PENEMPATAN SLIDER DI LUAR TOMBOL RENDER ---
-        st.markdown("### 📊 Pengaturan Parameter Fisika Survei Jalan")
+        st.markdown("### 📊 Pengaturan Parameter Survei Jalan")
         if "survey_speed_kmh" not in st.session_state:
             st.session_state.survey_speed_kmh = 18.0
 
@@ -403,7 +403,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         # --- BAGIAN TAMPILAN METRIK & PDF YANG BERTAHAN DI LUAR TOMBOL RENDER ---
         if st.session_state.get("video_rendered", False):
             st.markdown("---")
-            st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
+            st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
             
             dur = st.session_state.duration
             avg_lat = st.session_state.avg_latency
