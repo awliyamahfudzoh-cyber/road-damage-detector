@@ -135,7 +135,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             is_nature_landscape = (s_mean > 50 and ((90 < h_mean < 130) or (35 < h_mean < 85) and v_mean > 150))
 
             if is_paper_document or is_nature_landscape:
-                st.error(f"❌ **Peringatan Sistem:** Berkas `{uploaded_file.name}` terdeteksi sebagai Dokumen/Pemandangan (Bukan Objek Jalan). Sistem menolak berkas ini.")
+                st.error(f"❌ **Peringatan Sistem:** Berkas `{uploaded_file.name}` terdeteksi bukan sebagai objek jalan). Sistem menolak berkas ini.")
                 continue  # Langsung lewati file ini, tidak diproses ke model!
 
             # --- JIKA LOLOS SEBAGAI PERKERASAN JALAN ---
