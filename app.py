@@ -189,17 +189,6 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     "Paths": saved_paths,
                     "Show_Triptych": True
                 })
-            else:
-                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Tidak ada kerusakan struktural terdeteksi).")
-                global_summary.append({
-                    "Filename": uploaded_file.name, 
-                    "Damage Type": "Normal / Jalan Mulus", 
-                    "Unit Count": 0,
-                    "Avg Confidence": "-",
-                    "Inference Time (ms)": f"{inference_time:.1f}",
-                    "Paths": saved_paths,
-                    "Show_Triptych": True
-                })
                 
         if global_summary:
             st.markdown("---")
