@@ -105,7 +105,6 @@ class PDFReport(FPDF):
         self.set_font('helvetica', 'I', 8)
         self.cell(0, 8, f'Halaman {self.page_no()}', 0, 0, 'C')
 
-
 # =========================================================================
 # --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
@@ -127,7 +126,7 @@ elif input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-            # Tampilkan XAI Triptych untuk SEMUA kondisi gambar jalan (baik ada kerusakan maupun jalan mulus)
+            # Tampilkan XAI Triptych untuk SEMUA kondisi gambar jalan
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
@@ -180,7 +179,6 @@ elif input_type == "Citra / Gambar (Multi-Upload)":
                     "Show_Triptych": True
                 })
             else:
-                # Kondisi jalan mulus / bersih tanpa kerusakan
                 st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Tidak ada kerusakan struktural terdeteksi).")
                 global_summary.append({
                     "Filename": uploaded_file.name, 
