@@ -377,16 +377,30 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             video_bytes = f.read()
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
                         
-                st.markdown("---")
+               st.markdown("---")
                 st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan Berbasis Fisika")
                 
-                # Slider interaktif untuk kecepatan survei (berguna untuk penyesuaian di sidang skripsi)
-                survey_speed_kmh = st.slider("Kecepatan Rata-rata Kendaraan Survei (km/jam)", min_value=5.0, max_value=40.0, value=18.0, step=1.0)
-                survey_speed_ms = survey_speed_kmh / 3.6  # Konversi km/jam ke meter per detik (m/s)
+                # --- MENYIMPAN STATUS SLIDER DENGAN SESSION STATE ---
+                if "survey_speed_kmh" not in st.session_state:
+                    st.session_state.survey_speed_kmh = 18.0
+
+                # Slider interaktif dengan key session state agar nilainya persisten
+                survey_speed_kmh = st.slider(
+                    "Kecepatan Rata-rata Kendaraan Survei (km/jam)", 
+                    min_value=5.0, 
+                    max_value=40.0, 
+                    value=st.session_state.survey_speed_kmh, 
+                    step=1.0,
+                    key="survey_speed_slider"
+                )
+                
+                # Simpan perubahan nilai slider ke session state
+                st.session_state.survey_speed_kmh = survey_speed_kmh
+                survey_speed_ms = survey_speed_kmh / 3.6  # Konversi ke meter per detik (m/s)
                 
                 # Perhitungan fisika jarak ruas jalan
                 estimated_road_length = duration * survey_speed_ms
-                
+            
                 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
                 mcol1.metric("Durasi Video", f"{duration:.2f} s")
                 mcol2.metric("Rata-rata Latensi", f"{avg_latency:.1f} ms/frame")
