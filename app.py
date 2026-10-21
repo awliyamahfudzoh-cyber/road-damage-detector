@@ -7,6 +7,7 @@ import tempfile
 import time
 import pandas as pd
 from fpdf import FPDF
+import cv2
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -14,9 +15,6 @@ st.set_page_config(
     page_icon="🛣️",
     layout="wide"
 )
-
-# Impor cv2 ditaruh di sini setelah pustaka dasar aman
-import cv2
 
 # Judul Utama Dashboard
 st.title("🛣️ Dashboard Cerdas Pemantauan & Analisis Kerusakan Perkerasan Jalan")
@@ -108,7 +106,7 @@ class PDFReport(FPDF):
 # =========================================================================
 # --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
-elif input_type == "Citra / Gambar (Multi-Upload)":
+if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
         st.markdown(f"### 🖼️ Analisis Batch Citra ({len(uploaded_files)} berkas dimuat)")
         
@@ -126,7 +124,6 @@ elif input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
-            # Tampilkan XAI Triptych untuk SEMUA kondisi gambar jalan
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
