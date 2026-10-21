@@ -106,7 +106,7 @@ class PDFReport(FPDF):
 # =========================================================================
 # --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD & DYNAMIC PDF REPORT) ---
 # =========================================================================
-if input_type == "Citra / Gambar (Multi-Upload)":
+elif input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
         st.markdown(f"### 🖼️ Analisis Batch Citra ({len(uploaded_files)} berkas dimuat)")
         
@@ -117,6 +117,11 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             st.markdown(f"#### Berkas #{idx+1}: `{uploaded_file.name}`")
             image = Image.open(uploaded_file)
             
+            # Konversi ke array OpenCV untuk analisis warna/konteks sederhana
+            img_cv_check = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
+            # Deteksi sederhana: cek dominasi warna biru/hijau alam (contoh: pemandangan pantai/laut/tebing)
+            # H atau S atau V tertentu, atau kita validasi melalui keyakinan model YOLO
+            
             with st.spinner(f"Memproses {uploaded_file.name}..."):
                 start_time = time.time()
                 results = model(image, conf=conf_threshold)
@@ -124,6 +129,24 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             boxes = results[0].boxes
             
+            # --- FILTER VALIDASI APAKAH INI OBJEK JALAN ATAU BUKAN ---
+            # Jika tidak ada box DAN gambar didominasi warna alam (misal langit/laut/hijau daun), 
+            # kita deteksi sebagai "Bukan Objek Jalan"
+            is_road_environment = True
+            
+            # Contoh deteksi sederhana: hitung rata-rata warna untuk mendeteksi langit/pantai (dominan biru/hijau terang)
+            hsv_mean = img_cv_check.mean(axis=(0, 1))
+            # Jika Hue berada di rentang warna biru/hijau alam (pantai/laut) dan tidak ada kotak sama sekali:
+            if len(boxes) == 0:
+                # Cek apakah dominan biru (Hue sekitar 90-130) atau hijau terang
+                if (90 <= hsv_mean[0] <= 130) or (hsv_mean[2] > 200): # Indikasi langit/air/pemandangan terang
+                    is_road_environment = False
+
+            if not is_road_environment:
+                st.error(❌ **Peringatan:** Bukan objek jalan, silakan masukkan gambar yang sesuai.)
+                continue  # Lewati dan jangan tampilkan triptych XAI
+
+            # Jika lolos sebagai jalan (baik jalan rusak maupun jalan mulus bersih):
             p1, p2, p3 = generate_integrated_gradcam_triptych(image, results)
             tcol1, tcol2, tcol3 = st.columns(3)
             with tcol1:
