@@ -297,7 +297,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
         st.info("👈 Silakan unggah satu atau beberapa file gambar jalan melalui panel **sidebar di sebelah kiri**.")
         
 # =========================================================================
-# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE DENGAN SNAPSHOT) ---
+# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE & PDF 3 KOLOM) ---
 # =========================================================================
 elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     if uploaded_video is not None:
@@ -316,6 +316,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
         st.markdown("---")
         
+        # --- INISIALISASI & PENEMPATAN SLIDER DI LUAR TOMBOL RENDER ---
         st.markdown("### 📊 Pengaturan Parameter Survei Jalan")
         if "survey_speed_kmh" not in st.session_state:
             st.session_state.survey_speed_kmh = 18.0
@@ -341,17 +342,6 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 duration = frame_count / fps if fps > 0 else 0
-
-                # Validasi frame pertama video
-                ret_test, frame_test = cap.read()
-                if ret_test:
-                    test_rgb = cv2.cvtColor(frame_test, cv2.COLOR_BGR2RGB)
-                    is_valid_v, reason_v = is_valid_asphalt_road(test_rgb)
-                    if not is_valid_v:
-                        st.error(f"❌ **Peringatan Sistem (Batasan Penelitian):** Video ditolak. **{reason_v}**")
-                        cap.release()
-                        st.stop()
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
                 fourcc = cv2.VideoWriter_fourcc(*'VP80')
@@ -383,23 +373,18 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     out.write(annotated_frame)
 
                     boxes = results[0].boxes
-                    timestamp_sec = processed_frames / fps
-
-                    # --- REKAM SNAPSHOT (BAIK ADA KERUSAKAN MAUPUN JALAN MULUS BERKALA) ---
-                    if processed_frames % int(max(1, fps * 3)) == 0 or (boxes is not None and len(boxes) > 0):
+                    if boxes is not None and len(boxes) > 0:
+                        class_names = results[0].names
                         frame_damages = []
-                        if boxes is not None and len(boxes) > 0:
-                            class_names = results[0].names
-                            for c in boxes.cls:
-                                name = class_names[int(c)]
-                                frame_damages.append(name)
-                                total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
-                            damage_label = ", ".join(set(frame_damages))
-                        else:
-                            damage_label = "Normal / Jalan Mulus"
+                        for c in boxes.cls:
+                            name = class_names[int(c)]
+                            frame_damages.append(name)
+                            total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
 
-                        pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        timestamp_sec = processed_frames / fps
+                        
                         if "FP32" in model_type:
+                            pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
                             p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
                             p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
@@ -416,7 +401,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                         snapshots_data.append({
                             "frame": annotated_frame,
                             "time": f"{timestamp_sec:.1f} s",
-                            "damages": damage_label,
+                            "damages": ", ".join(set(frame_damages)),
                             "paths": snap_paths,
                             "Is_FP32": "FP32" in model_type
                         })
@@ -433,12 +418,14 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             video_bytes = f.read()
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
                 
+                # Simpan hasil render ke session_state agar metrik & PDF tidak hilang saat interaksi lain
                 st.session_state.video_rendered = True
                 st.session_state.duration = duration
                 st.session_state.avg_latency = avg_latency
                 st.session_state.total_damage_accumulated = total_damage_accumulated
                 st.session_state.snapshots_data = snapshots_data
 
+        # --- BAGIAN TAMPILAN METRIK & PDF YANG BERTAHAN DI LUAR TOMBOL RENDER ---
         if st.session_state.get("video_rendered", False):
             st.markdown("---")
             st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
@@ -466,17 +453,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     with r_cols[idx % len(r_cols)]:
                         st.metric(label=f"Jenis: {k}", value=f"{v} Titik")
             else:
-                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Video terverifikasi sebagai perkerasan jalan aspal tanpa kerusakan struktural).")
-
-            # --- MENAMPILKAN KEMBALI FITUR SNAPSHOT DI BAWAH VIDEO ---
-            if snaps:
-                st.markdown("---")
-                st.markdown("### ⏱️ Timeline & Snapshot Titik Pantau Ruas Jalan")
-                s_cols = st.columns(3)
-                for i, snap in enumerate(snaps[:6] if len(snaps) > 6 else snaps):
-                    with s_cols[i % 3]:
-                        st.image(snap["frame"], channels="BGR", use_container_width=True)
-                        st.caption(f"⏱️ Waktu: {snap['time']} | Status: {snap['damages']}")
+                st.warning("⚠️ Peringatan: Tidak ada objek jalan atau kerusakan signifikan terdeteksi pada video ini.")
 
             st.markdown("---")
             st.markdown("### 📥 Ekspor Laporan Pemantauan Ruas Jalan (.PDF)")
@@ -529,16 +506,29 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             pdf.cell(65, 4, '2. Heatmap XAI', 0, 0, 'C')
                             pdf.cell(65, 4, '3. Overlay Grad-CAM', 0, 1, 'C')
                             pdf.ln(3)
+                        else:
+                            if os.path.exists(s['paths']['p1']):
+                                pdf.image(s['paths']['p1'], w=90)
+                                pdf.ln(4)
 
                 return bytes(pdf.output())
 
             video_pdf_bytes = create_video_pdf_report(dur, avg_lat, estimated_road_length, total_titik, tot_dam, snaps)
             st.download_button(
-                label="📥 Unduh Laporan Pemantauan Ruas Jalan (.PDF)",
+                label="📥 Unduh Laporan Pemantauan Video (.PDF)",
                 data=video_pdf_bytes,
                 file_name="Laporan_Pemantauan_Video_Jalan.pdf",
                 mime="application/pdf",
             )
+
+            if snaps:
+                st.markdown("---")
+                st.markdown("### ⏱️ Timeline & Titik Kritis Kerusakan (Video Timeline)")
+                s_cols = st.columns(3)
+                for i, snap in enumerate(snaps):
+                    with s_cols[i % 3]:
+                        st.image(snap["frame"], channels="BGR", use_container_width=True)
+                        st.caption(f"⏱️ Poin Timeline: {snap['time']} | Klasifikasi: {snap['damages']}")
     else:
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
 
