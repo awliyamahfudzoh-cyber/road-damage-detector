@@ -77,26 +77,26 @@ def is_valid_asphalt_road(img_np):
     
     # 1. Dokumen / Kertas putih (Kecerahan sangat tinggi, saturasi sangat rendah)
     if v_mean > 190 and s_mean < 35:
-        return False, "Berkas terdeteksi sebagai dokumen atau kertas (bukan objek jalan aspal)."
+        return False, "Berkas terdeteksi bukan objek jalan aspal."
     
     # 2. Pemandangan alam / langit / hijau daun (Saturasi tinggi atau hue warna alam)
     if s_mean > 50 and ((90 < h_mean < 130) or (35 < h_mean < 85) and v_mean > 150):
-        return False, "Berkas terdeteksi sebagai pemandangan alam/langit (bukan objek jalan aspal)."
+        return False, "Berkas terdeteksi bukan objek jalan aspal."
     
     # 3. Jalan beton putih atau paving block terang (Nilai Value tinggi & saturasi sangat rendah)
     if v_mean > 185 and s_mean < 30:
-        return False, "Berkas terdeteksi sebagai jalan beton atau paving block terang (di luar batasan perkerasan aspal)."
+        return False, "Berkas terdeteksi sebagai bukan sebagai objek aspal."
         
     # 4. Tanah cokelat (Hue dominan warna tanah/cokelat berkisar di angka 10 - 25 dengan saturasi sedang-tinggi)
     if (10 <= h_mean <= 25) and (s_mean > 35) and (v_mean < 160):
-        return False, "Berkas terdeteksi sebagai permukaan tanah/lahan (bukan perkerasan jalan aspal)."
+        return False, "Berkas terdeteksi sebagai bukan sebagai objek aspal."
 
     # 5. Pengecekan Pola Paving Block (Memiliki variasi kontras grid/garis teratur yang tinggi)
     # Paving block memiliki standar deviasi Laplacian yang khas karena pola nat/celah antar blok
     laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
     if laplacian_var > 850 and v_mean > 140:
         # Cek apakah ini pola struktur kotak/paving
-        return False, "Berkas terdeteksi memiliki pola struktur blok/paving (bukan perkerasan aspal monolitik)."
+        return False, "Berkas terdeteksi sebagai bukan objek aspal."
 
     return True, "Valid"
 
@@ -160,7 +160,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             # --- VALIDASI KETAT: BATASAN OBJEK JALAN ASPAL ---
             is_valid, reason_msg = is_valid_asphalt_road(img_np)
             if not is_valid:
-                st.error(f"❌ **Peringatan Sistem (Batasan Penelitian):** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
+                st.error(f"❌ **Peringatan Sistem:** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
                 continue  # Lewati file ini!
 
             # --- JIKA LOLOS SEBAGAI PERKERASAN JALAN ASPAL ---
@@ -223,7 +223,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                     "Show_Triptych": True
                 })
             else:
-                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Objek terverifikasi sebagai perkerasan jalan aspal tanpa kerusakan struktural).")
+                st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih**.")
                 global_summary.append({
                     "Filename": uploaded_file.name, 
                     "Damage Type": "Normal / Jalan Mulus", 
