@@ -61,30 +61,43 @@ def load_model(choice):
 with st.spinner("Memuat model ke memori..."):
     model = load_model(model_type)
 
-# --- FUNGSI VALIDASI OBJEK JALAN ASPAL (MENGHINDARI BETON, PAVING, TANAH, DOKUMEN, DLL) ---
+# --- FUNGSI VALIDASI KETAT OBJEK JALAN ASPAL (BLOKIR BETON, PAVING, TANAH, DOKUMEN, DLL) ---
 def is_valid_asphalt_road(img_np):
     """
     Memeriksa apakah citra masukan sesuai dengan karakteristik visual perkerasan aspal.
-    Menolak dokumen, paving block (pola kotak/garis teratur), jalan beton (terlalu terang/putih), 
-    tanah, atau lanskap alam (langit/pohon).
+    Mendeteksi dan menolak dokumen, paving block (pola blok teratur/kontras tinggi), 
+    jalan beton putih, tanah cokelat, atau lanskap alam.
     """
+    img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     img_hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+    
     h_mean = img_hsv[:, :, 0].mean()
     s_mean = img_hsv[:, :, 1].mean()
     v_mean = img_hsv[:, :, 2].mean()
     
-    # 1. Dokumen / Kertas putih (Kecerahan tinggi, saturasi sangat rendah)
+    # 1. Dokumen / Kertas putih (Kecerahan sangat tinggi, saturasi sangat rendah)
     if v_mean > 190 and s_mean < 35:
-        return False, "Berkas terdeteksi sebagai bukan objek jalan aspal."
+        return False, "Berkas terdeteksi sebagai dokumen atau kertas (bukan objek jalan aspal)."
     
-    # 2. Pemandangan alam / langit / hijau daun (Saturasi warna tinggi dengan hue tertentu)
+    # 2. Pemandangan alam / langit / hijau daun (Saturasi tinggi atau hue warna alam)
     if s_mean > 50 and ((90 < h_mean < 130) or (35 < h_mean < 85) and v_mean > 150):
-        return False, "Berkas terdeteksi sebagai bukan objek jalan aspal."
+        return False, "Berkas terdeteksi sebagai pemandangan alam/langit (bukan objek jalan aspal)."
     
-    # 3. Jalan beton putih atau paving block terang (Nilai Value/Brightness sangat tinggi dan warna abu-abu netral)
-    if v_mean > 200 and s_mean < 25:
-        return False, "Berkas terdeteksi sebagai bukan objek aspal."
+    # 3. Jalan beton putih atau paving block terang (Nilai Value tinggi & saturasi sangat rendah)
+    if v_mean > 185 and s_mean < 30:
+        return False, "Berkas terdeteksi sebagai jalan beton atau paving block terang (di luar batasan perkerasan aspal)."
         
+    # 4. Tanah cokelat (Hue dominan warna tanah/cokelat berkisar di angka 10 - 25 dengan saturasi sedang-tinggi)
+    if (10 <= h_mean <= 25) and (s_mean > 35) and (v_mean < 160):
+        return False, "Berkas terdeteksi sebagai permukaan tanah/lahan (bukan perkerasan jalan aspal)."
+
+    # 5. Pengecekan Pola Paving Block (Memiliki variasi kontras grid/garis teratur yang tinggi)
+    # Paving block memiliki standar deviasi Laplacian yang khas karena pola nat/celah antar blok
+    laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
+    if laplacian_var > 850 and v_mean > 140:
+        # Cek apakah ini pola struktur kotak/paving
+        return False, "Berkas terdeteksi memiliki pola struktur blok/paving (bukan perkerasan aspal monolitik)."
+
     return True, "Valid"
 
 # --- FUNGSI INTEGRATED GRAD-CAM (TRIPTYCH GENERATOR) ---
@@ -119,7 +132,7 @@ class PDFReport(FPDF):
 
     def header(self):
         self.set_font('helvetica', 'B', 12)
-        self.cell(0, 8, 'LAPORAN ANALISIS KERUSAKAN PERKERASAN JALAN', 0, 1, 'C')
+        self.cell(0, 8, 'LAPORAN RESMI ANALISIS KERUSAKAN PERKERASAN JALAN', 0, 1, 'C')
         self.set_font('helvetica', 'I', 9)
         self.cell(0, 5, f'Backend Model: {self.model_info} | Threshold: {self.threshold_info}', 0, 1, 'C')
         self.ln(4)
@@ -130,7 +143,7 @@ class PDFReport(FPDF):
         self.cell(0, 8, f'Halaman {self.page_no()}', 0, 0, 'C')
 
 # =========================================================================
-# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD DENGAN VALIDASI ASPAL) ---
+# --- MENU 1: CITRA / GAMBAR (MULTI-UPLOAD DENGAN VALIDASI KETAT) ---
 # =========================================================================
 if input_type == "Citra / Gambar (Multi-Upload)":
     if uploaded_files:
@@ -147,8 +160,8 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             # --- VALIDASI KETAT: BATASAN OBJEK JALAN ASPAL ---
             is_valid, reason_msg = is_valid_asphalt_road(img_np)
             if not is_valid:
-                st.error(f"❌ **Peringatan Sistem:** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
-                continue  # Lewati file ini, tidak diproses ke model!
+                st.error(f"❌ **Peringatan Sistem (Batasan Penelitian):** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
+                continue  # Lewati file ini!
 
             # --- JIKA LOLOS SEBAGAI PERKERASAN JALAN ASPAL ---
             with st.spinner(f"Memproses {uploaded_file.name} dengan YOLOv10..."):
@@ -223,7 +236,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 
         if global_summary:
             st.markdown("---")
-            st.markdown("### 📥 Ekspor Laporan Analisis Citra (.PDF)")
+            st.markdown("### 📥 Ekspor Laporan Resmi Analisis Citra (.PDF)")
             
             def create_pdf_report(summary_data):
                 pdf = PDFReport(model_type, conf_threshold)
@@ -275,7 +288,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
-                label="📥 Unduh Laporan (.PDF Berisi Tabel & Triptych 3 Kolom)",
+                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Triptych 3 Kolom)",
                 data=pdf_bytes,
                 file_name="Laporan_Analisis_Citra_Jalan.pdf",
                 mime="application/pdf",
@@ -284,7 +297,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
         st.info("👈 Silakan unggah satu atau beberapa file gambar jalan melalui panel **sidebar di sebelah kiri**.")
         
 # =========================================================================
-# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE) ---
+# --- MENU 2: STUDIO PEMANTAUAN VIDEO (TIMELINE MODE DENGAN SNAPSHOT) ---
 # =========================================================================
 elif input_type == "Studio Pemantauan Video (Timeline Mode)":
     if uploaded_video is not None:
@@ -329,7 +342,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 duration = frame_count / fps if fps > 0 else 0
 
-                # Validasi frame pertama video apakah objek jalan aspal
+                # Validasi frame pertama video
                 ret_test, frame_test = cap.read()
                 if ret_test:
                     test_rgb = cv2.cvtColor(frame_test, cv2.COLOR_BGR2RGB)
@@ -338,7 +351,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                         st.error(f"❌ **Peringatan Sistem (Batasan Penelitian):** Video ditolak. **{reason_v}**")
                         cap.release()
                         st.stop()
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0) # Reset pointer video
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.webm').name
                 fourcc = cv2.VideoWriter_fourcc(*'VP80')
@@ -370,18 +383,23 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     out.write(annotated_frame)
 
                     boxes = results[0].boxes
-                    if boxes is not None and len(boxes) > 0:
-                        class_names = results[0].names
-                        frame_damages = []
-                        for c in boxes.cls:
-                            name = class_names[int(c)]
-                            frame_damages.append(name)
-                            total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
+                    timestamp_sec = processed_frames / fps
 
-                        timestamp_sec = processed_frames / fps
-                        
+                    # --- REKAM SNAPSHOT (BAIK ADA KERUSAKAN MAUPUN JALAN MULUS BERKALA) ---
+                    if processed_frames % int(max(1, fps * 3)) == 0 or (boxes is not None and len(boxes) > 0):
+                        frame_damages = []
+                        if boxes is not None and len(boxes) > 0:
+                            class_names = results[0].names
+                            for c in boxes.cls:
+                                name = class_names[int(c)]
+                                frame_damages.append(name)
+                                total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
+                            damage_label = ", ".join(set(frame_damages))
+                        else:
+                            damage_label = "Normal / Jalan Mulus"
+
+                        pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                         if "FP32" in model_type:
-                            pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
                             p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
                             p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
@@ -398,7 +416,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                         snapshots_data.append({
                             "frame": annotated_frame,
                             "time": f"{timestamp_sec:.1f} s",
-                            "damages": ", ".join(set(frame_damages)),
+                            "damages": damage_label,
                             "paths": snap_paths,
                             "Is_FP32": "FP32" in model_type
                         })
@@ -449,6 +467,16 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                         st.metric(label=f"Jenis: {k}", value=f"{v} Titik")
             else:
                 st.success("🟢 Status: **Kondisi Jalan Mulus / Bersih** (Video terverifikasi sebagai perkerasan jalan aspal tanpa kerusakan struktural).")
+
+            # --- MENAMPILKAN KEMBALI FITUR SNAPSHOT DI BAWAH VIDEO ---
+            if snaps:
+                st.markdown("---")
+                st.markdown("### ⏱️ Timeline & Snapshot Titik Pantau Ruas Jalan")
+                s_cols = st.columns(3)
+                for i, snap in enumerate(snaps[:6] if len(snaps) > 6 else snaps):
+                    with s_cols[i % 3]:
+                        st.image(snap["frame"], channels="BGR", use_container_width=True)
+                        st.caption(f"⏱️ Waktu: {snap['time']} | Status: {snap['damages']}")
 
             st.markdown("---")
             st.markdown("### 📥 Ekspor Laporan Pemantauan Ruas Jalan (.PDF)")
@@ -506,7 +534,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
             video_pdf_bytes = create_video_pdf_report(dur, avg_lat, estimated_road_length, total_titik, tot_dam, snaps)
             st.download_button(
-                label="📥 Unduh Laporan Pemantauan Video (.PDF)",
+                label="📥 Unduh Laporan Pemantauan Ruas Jalan (.PDF)",
                 data=video_pdf_bytes,
                 file_name="Laporan_Pemantauan_Video_Jalan.pdf",
                 mime="application/pdf",
@@ -515,7 +543,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         st.info("👈 Silakan unggah berkas video melalui panel **sidebar di sebelah kiri** untuk masuk ke Studio Pemantauan.")
 
 # =========================================================================
-# --- MENU 3: KAMERA / LIVE STREAMING (SNAPSHOT DENGAN VALIDASI ASPAL) ---
+# --- MENU 3: KAMERA / LIVE STREAMING (SNAPSHOT DENGAN VALIDASI KETAT) ---
 # =========================================================================
 elif input_type == "Kamera / Live Streaming (Real-Time)":
     st.markdown("### 🔴 Studio Tangkapan Kamera Real-Time (Snapshot)")
