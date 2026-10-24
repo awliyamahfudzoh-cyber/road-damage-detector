@@ -75,15 +75,15 @@ def is_valid_asphalt_road(img_np):
     
     # 1. Dokumen / Kertas putih (Kecerahan tinggi, saturasi sangat rendah)
     if v_mean > 190 and s_mean < 35:
-        return False, "Berkas terdeteksi sebagai dokumen atau kertas (bukan objek jalan aspal)."
+        return False, "Berkas terdeteksi sebagai bukan objek jalan aspal."
     
     # 2. Pemandangan alam / langit / hijau daun (Saturasi warna tinggi dengan hue tertentu)
     if s_mean > 50 and ((90 < h_mean < 130) or (35 < h_mean < 85) and v_mean > 150):
-        return False, "Berkas terdeteksi sebagai pemandangan alam/langit (bukan objek jalan aspal)."
+        return False, "Berkas terdeteksi sebagai bukan objek jalan aspal."
     
     # 3. Jalan beton putih atau paving block terang (Nilai Value/Brightness sangat tinggi dan warna abu-abu netral)
     if v_mean > 200 and s_mean < 25:
-        return False, "Berkas terdeteksi sebagai jalan beton atau paving block (di luar batasan perkerasan aspal)."
+        return False, "Berkas terdeteksi sebagai bukan objek aspal."
         
     return True, "Valid"
 
@@ -119,7 +119,7 @@ class PDFReport(FPDF):
 
     def header(self):
         self.set_font('helvetica', 'B', 12)
-        self.cell(0, 8, 'LAPORAN RESMI ANALISIS KERUSAKAN PERKERASAN JALAN', 0, 1, 'C')
+        self.cell(0, 8, 'LAPORAN ANALISIS KERUSAKAN PERKERASAN JALAN', 0, 1, 'C')
         self.set_font('helvetica', 'I', 9)
         self.cell(0, 5, f'Backend Model: {self.model_info} | Threshold: {self.threshold_info}', 0, 1, 'C')
         self.ln(4)
@@ -147,7 +147,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             # --- VALIDASI KETAT: BATASAN OBJEK JALAN ASPAL ---
             is_valid, reason_msg = is_valid_asphalt_road(img_np)
             if not is_valid:
-                st.error(f"❌ **Peringatan Sistem (Batasan Penelitian):** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
+                st.error(f"❌ **Peringatan Sistem:** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
                 continue  # Lewati file ini, tidak diproses ke model!
 
             # --- JIKA LOLOS SEBAGAI PERKERASAN JALAN ASPAL ---
@@ -223,7 +223,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
                 
         if global_summary:
             st.markdown("---")
-            st.markdown("### 📥 Ekspor Laporan Resmi Analisis Citra (.PDF)")
+            st.markdown("### 📥 Ekspor Laporan Analisis Citra (.PDF)")
             
             def create_pdf_report(summary_data):
                 pdf = PDFReport(model_type, conf_threshold)
@@ -275,7 +275,7 @@ if input_type == "Citra / Gambar (Multi-Upload)":
 
             pdf_bytes = create_pdf_report(global_summary)
             st.download_button(
-                label="📥 Unduh Laporan Resmi (.PDF Berisi Tabel & Triptych 3 Kolom)",
+                label="📥 Unduh Laporan (.PDF Berisi Tabel & Triptych 3 Kolom)",
                 data=pdf_bytes,
                 file_name="Laporan_Analisis_Citra_Jalan.pdf",
                 mime="application/pdf",
