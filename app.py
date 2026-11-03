@@ -63,11 +63,6 @@ with st.spinner("Memuat model ke memori..."):
 
 # --- FUNGSI VALIDASI KETAT OBJEK JALAN ASPAL (BLOKIR BETON, PAVING, TANAH, DOKUMEN, DLL) ---
 def is_valid_asphalt_road(img_np):
-    """
-    Memeriksa apakah citra masukan sesuai dengan karakteristik visual perkerasan aspal.
-    Mendeteksi dan menolak dokumen, paving block (pola blok teratur/kontras tinggi), 
-    jalan beton putih, tanah cokelat, atau lanskap alam.
-    """
     img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     img_hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
     
@@ -75,27 +70,17 @@ def is_valid_asphalt_road(img_np):
     s_mean = img_hsv[:, :, 1].mean()
     v_mean = img_hsv[:, :, 2].mean()
     
-    # 1. Dokumen / Kertas putih (Kecerahan sangat tinggi, saturasi sangat rendah)
     if v_mean > 190 and s_mean < 35:
         return False, "Berkas terdeteksi bukan objek jalan aspal."
-    
-    # 2. Pemandangan alam / langit / hijau daun (Saturasi tinggi atau hue warna alam)
     if s_mean > 50 and ((90 < h_mean < 130) or (35 < h_mean < 85) and v_mean > 150):
         return False, "Berkas terdeteksi bukan objek jalan aspal."
-    
-    # 3. Jalan beton putih atau paving block terang (Nilai Value tinggi & saturasi sangat rendah)
     if v_mean > 185 and s_mean < 30:
         return False, "Berkas terdeteksi sebagai bukan sebagai objek aspal."
-        
-    # 4. Tanah cokelat (Hue dominan warna tanah/cokelat berkisar di angka 10 - 25 dengan saturasi sedang-tinggi)
     if (10 <= h_mean <= 25) and (s_mean > 35) and (v_mean < 160):
         return False, "Berkas terdeteksi sebagai bukan sebagai objek aspal."
 
-    # 5. Pengecekan Pola Paving Block (Memiliki variasi kontras grid/garis teratur yang tinggi)
-    # Paving block memiliki standar deviasi Laplacian yang khas karena pola nat/celah antar blok
     laplacian_var = cv2.Laplacian(img_gray, cv2.CV_64F).var()
     if laplacian_var > 850 and v_mean > 140:
-        # Cek apakah ini pola struktur kotak/paving
         return False, "Berkas terdeteksi sebagai bukan objek aspal."
 
     return True, "Valid"
@@ -157,13 +142,11 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             image = Image.open(uploaded_file)
             img_np = np.array(image)
             
-            # --- VALIDASI KETAT: BATASAN OBJEK JALAN ASPAL ---
             is_valid, reason_msg = is_valid_asphalt_road(img_np)
             if not is_valid:
                 st.error(f"❌ **Peringatan Sistem:** Berkas `{uploaded_file.name}` ditolak. **{reason_msg}**")
-                continue  # Lewati file ini!
+                continue
 
-            # --- JIKA LOLOS SEBAGAI PERKERASAN JALAN ASPAL ---
             with st.spinner(f"Memproses {uploaded_file.name} dengan YOLOv10..."):
                 start_time = time.time()
                 results = model(image, conf=conf_threshold)
@@ -191,7 +174,6 @@ if input_type == "Citra / Gambar (Multi-Upload)":
             cv2.imwrite(p3_path, p3)
             
             saved_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
-
             st.info(f"⏱️ Waktu Inferensi Citra: **{inference_time:.1f} ms**")
 
             if boxes is not None and len(boxes) > 0:
@@ -316,8 +298,6 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
         st.markdown("---")
         
-        # --- INISIALISASI & PENEMPATAN SLIDER DI LUAR TOMBOL RENDER ---
-        st.markdown("### 📊 Pengaturan Parameter Survei Jalan")
         if "survey_speed_kmh" not in st.session_state:
             st.session_state.survey_speed_kmh = 18.0
 
@@ -334,7 +314,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
         st.markdown("---")
         
         if st.button("🚀 Render & Jalankan Studio Analisis Linimasa"):
-            with st.spinner("Memproses bingkai video studio..."):
+            with st.spinner("Memproses bingkai video studio (dengan optimasi filter debouncing)..."):
                 cap = cv2.VideoCapture(video_path)
                 fps = cap.get(cv2.CAP_PROP_FPS)
                 fps = fps if fps > 0 else 30.0
@@ -353,6 +333,9 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                 processed_frames = 0
                 inference_times_list = []
                 
+                # Dictionary pelacak waktu agar objek yang sama tidak dihitung ganda terus menerus
+                last_recorded_timestamps = {}
+                
                 while cap.isOpened():
                     ret, frame = cap.read()
                     if not ret:
@@ -361,6 +344,11 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     processed_frames += 1
                     if processed_frames % 10 == 0 or processed_frames == frame_count:
                         progress_bar.progress(min(processed_frames / frame_count, 1.0))
+
+                    # OPTIMASI: Frame Skipping (proses inferensi setiap 2 frame sekali agar lebih cepat & stabil)
+                    if processed_frames % 2 != 0:
+                        out.write(frame)
+                        continue
 
                     t_start = time.time()
                     results = model(frame, conf=conf_threshold, verbose=False)
@@ -373,32 +361,25 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     out.write(annotated_frame)
 
                     boxes = results[0].boxes
+                    timestamp_sec = processed_frames / fps
+
                     if boxes is not None and len(boxes) > 0:
                         class_names = results[0].names
                         frame_damages = []
                         
-                        # Simpan koordinat box untuk pengecekan jarak antar frame (opsional) atau gunakan jeda frame
-                        # Agar lebih ringkas untuk revisi sidang, kita bisa membatasi pencatatan per detik/interval tertentu
-                        timestamp_sec = processed_frames / fps
-                        
-                        # Inisialisasi pelacak sederhana di luar loop jika belum ada (misal di awal tombol render)
-                        if "last_recorded_timestamps" not in st.session_state:
-                            st.session_state.last_recorded_timestamps = {}
-
                         for box_tensor in boxes:
                             c = int(box_tensor.cls[0])
                             name = class_names[c]
                             frame_damages.append(name)
                             
-                            # Logika Debouncing: Hanya hitung sebagai "1 Titik Unik" baru 
-                            # jika objek dengan kelas yang sama tidak muncul dalam 2 detik terakhir
-                            last_time = st.session_state.last_recorded_timestamps.get(name, -999)
-                            if (timestamp_sec - last_time) > 2.0:  
+                            # === SOLUSI REVISI SIDANG: DEBOUNCING / TIME-WINDOW FILTER ===
+                            # Kerusakan yang sama hanya akan dicatat sebagai 1 titik baru jika 
+                            # sudah lewat dari 2.5 detik sejak kemunculan terakhirnya di video.
+                            last_time = last_recorded_timestamps.get(name, -999.0)
+                            if (timestamp_sec - last_time) > 2.5:
                                 total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
-                                st.session_state.last_recorded_timestamps[name] = timestamp_sec
+                                last_recorded_timestamps[name] = timestamp_sec
 
-                        timestamp_sec = processed_frames / fps
-                        
                         if "FP32" in model_type:
                             pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
@@ -424,7 +405,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
 
                 cap.release()
                 out.release()
-                st.success("✅ Rendering studio video selesai!")
+                st.success("✅ Rendering studio video selesai dengan filter akurasi titik kerusakan!")
 
                 avg_latency = sum(inference_times_list) / len(inference_times_list) if inference_times_list else 0
 
@@ -434,14 +415,12 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             video_bytes = f.read()
                             output_video_placeholder.video(video_bytes, format='video/webm', start_time=0)
                 
-                # Simpan hasil render ke session_state agar metrik & PDF tidak hilang saat interaksi lain
                 st.session_state.video_rendered = True
                 st.session_state.duration = duration
                 st.session_state.avg_latency = avg_latency
                 st.session_state.total_damage_accumulated = total_damage_accumulated
                 st.session_state.snapshots_data = snapshots_data
 
-        # --- BAGIAN TAMPILAN METRIK & PDF YANG BERTAHAN DI LUAR TOMBOL RENDER ---
         if st.session_state.get("video_rendered", False):
             st.markdown("---")
             st.markdown("### 📊 Ringkasan Metrik & Estimasi Ruas Jalan")
@@ -561,7 +540,6 @@ elif input_type == "Kamera / Live Streaming (Real-Time)":
         image = Image.open(camera_file)
         img_np = np.array(image)
         
-        # --- VALIDASI KETAT: BATASAN OBJEK JALAN ASPAL ---
         is_valid_cam, reason_cam = is_valid_asphalt_road(img_np)
         if not is_valid_cam:
             st.error(f"❌ **Peringatan Sistem (Batasan Penelitian):** {reason_cam} Silakan arahkan kamera ke permukaan perkerasan jalan aspal.")
