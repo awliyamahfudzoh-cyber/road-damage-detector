@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # Judul Utama Dashboard
-st.title("🛣️ Dashboard Cerdas Pemantauan & Analisis Kerusakan Perkerasan Jalan")
+st.title("🛣️ Dashboard Pemantauan & Analisis Kerusakan Perkerasan Jalan")
 st.markdown("""
 *Sistem Deteksi Real-Time Berbasis YOLOv10 (FP32 vs OpenVINO INT8).*
 """)
