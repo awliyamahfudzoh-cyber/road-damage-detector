@@ -376,10 +376,26 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     if boxes is not None and len(boxes) > 0:
                         class_names = results[0].names
                         frame_damages = []
-                        for c in boxes.cls:
-                            name = class_names[int(c)]
+                        
+                        # Simpan koordinat box untuk pengecekan jarak antar frame (opsional) atau gunakan jeda frame
+                        # Agar lebih ringkas untuk revisi sidang, kita bisa membatasi pencatatan per detik/interval tertentu
+                        timestamp_sec = processed_frames / fps
+                        
+                        # Inisialisasi pelacak sederhana di luar loop jika belum ada (misal di awal tombol render)
+                        if "last_recorded_timestamps" not in st.session_state:
+                            st.session_state.last_recorded_timestamps = {}
+
+                        for box_tensor in boxes:
+                            c = int(box_tensor.cls[0])
+                            name = class_names[c]
                             frame_damages.append(name)
-                            total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
+                            
+                            # Logika Debouncing: Hanya hitung sebagai "1 Titik Unik" baru 
+                            # jika objek dengan kelas yang sama tidak muncul dalam 2 detik terakhir
+                            last_time = st.session_state.last_recorded_timestamps.get(name, -999)
+                            if (timestamp_sec - last_time) > 2.0:  
+                                total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
+                                st.session_state.last_recorded_timestamps[name] = timestamp_sec
 
                         timestamp_sec = processed_frames / fps
                         
