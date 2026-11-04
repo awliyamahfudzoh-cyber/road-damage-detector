@@ -363,6 +363,9 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     boxes = results[0].boxes
                     timestamp_sec = processed_frames / fps
 
+                    boxes = results[0].boxes
+                    timestamp_sec = processed_frames / fps
+
                     if boxes is not None and len(boxes) > 0:
                         class_names = results[0].names
                         frame_damages = []
@@ -371,17 +374,15 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             c = int(box_tensor.cls[0])
                             name = class_names[c]
                             
-                            # Ambil koordinat box [x1, y1, x2, y2] untuk validasi bentuk
+                            # Validasi rasio aspek opsional untuk mengurangi misclassification
                             xyxy = box_tensor.xyxy[0].cpu().numpy()
                             x1, y1, x2, y2 = map(int, xyxy[:4])
                             box_w = max(1, x2 - x1)
                             box_h = max(1, y2 - y1)
                             aspect_ratio = max(box_w, box_h) / min(box_w, box_h)
 
-                            # === FILTER TAMBAHAN UNTUK MENGURANGI SALAH KLASIFIKASI ===
-                            # Contoh: Pothole (lubang) biasanya bentuknya cenderung proporsional (tidak terlalu pipih/ekstrem)
                             if name == "pothole" and aspect_ratio > 4.0:
-                                continue  # Lewati jika bentuknya terlalu memanjang seperti garis/retakan
+                                continue  
                                 
                             frame_damages.append(name)
                             
@@ -390,30 +391,30 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                             if (timestamp_sec - last_time) > 2.5:
                                 total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
                                 last_recorded_timestamps[name] = timestamp_sec
-                                
-                        if "FP32" in model_type:
-                            pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                            p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
-                            p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                            p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                            p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                            cv2.imwrite(p1_path, p1)
-                            cv2.imwrite(p2_path, p2)
-                            cv2.imwrite(p3_path, p3)
-                            snap_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
-                        else:
-                            p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
-                            cv2.imwrite(p1_path, annotated_frame)
-                            snap_paths = {"p1": p1_path, "p2": None, "p3": None}
 
-                        snapshots_data.append({
-                            "frame": annotated_frame,
-                            "time": f"{timestamp_sec:.1f} s",
-                            "damages": ", ".join(set(frame_damages)),
-                            "paths": snap_paths,
-                            "Is_FP32": "FP32" in model_type
-                        })
+                                # === PINDAHKAN SNAPSHOT KE SINI AGAR SINKRON DENGAN TOTAL TITIK ===
+                                if "FP32" in model_type:
+                                    pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                                    p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
+                                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                                    p2_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                                    p3_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                                    cv2.imwrite(p1_path, p1)
+                                    cv2.imwrite(p2_path, p2)
+                                    cv2.imwrite(p3_path, p3)
+                                    snap_paths = {"p1": p1_path, "p2": p2_path, "p3": p3_path}
+                                else:
+                                    p1_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
+                                    cv2.imwrite(p1_path, annotated_frame)
+                                    snap_paths = {"p1": p1_path, "p2": None, "p3": None}
 
+                                snapshots_data.append({
+                                    "frame": annotated_frame,
+                                    "time": f"{timestamp_sec:.1f} s",
+                                    "damages": name,
+                                    "paths": snap_paths,
+                                    "Is_FP32": "FP32" in model_type
+                                })
                 cap.release()
                 out.release()
                 st.success("✅ Rendering studio video selesai dengan filter akurasi titik kerusakan!")
