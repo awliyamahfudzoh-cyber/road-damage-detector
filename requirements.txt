@@ -1,7 +1,8 @@
 streamlit
 ultralytics
-openvino==2024.4.0
+openvino>=2026.0.0
+opencv-python-headless
 pandas
 pillow
-numpy<2.0.0
+numpy
 fpdf2
