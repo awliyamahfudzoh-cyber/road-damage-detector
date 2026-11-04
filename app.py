@@ -363,23 +363,34 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     boxes = results[0].boxes
                     timestamp_sec = processed_frames / fps
 
-                    if boxes is not None and len(boxes) > 0:
+                   if boxes is not None and len(boxes) > 0:
                         class_names = results[0].names
                         frame_damages = []
                         
                         for box_tensor in boxes:
                             c = int(box_tensor.cls[0])
                             name = class_names[c]
+                            
+                            # Ambil koordinat box [x1, y1, x2, y2] untuk validasi bentuk
+                            xyxy = box_tensor.xyxy[0].cpu().numpy()
+                            x1, y1, x2, y2 = map(int, xyxy[:4])
+                            box_w = max(1, x2 - x1)
+                            box_h = max(1, y2 - y1)
+                            aspect_ratio = max(box_w, box_h) / min(box_w, box_h)
+
+                            # === FILTER TAMBAHAN UNTUK MENGURANGI SALAH KLASIFIKASI ===
+                            # Contoh: Pothole (lubang) biasanya bentuknya cenderung proporsional (tidak terlalu pipih/ekstrem)
+                            if name == "pothole" and aspect_ratio > 4.0:
+                                continue  # Lewati jika bentuknya terlalu memanjang seperti garis/retakan
+                                
                             frame_damages.append(name)
                             
-                            # === SOLUSI REVISI SIDANG: DEBOUNCING / TIME-WINDOW FILTER ===
-                            # Kerusakan yang sama hanya akan dicatat sebagai 1 titik baru jika 
-                            # sudah lewat dari 2.5 detik sejak kemunculan terakhirnya di video.
+                            # === DEBOUNCING / TIME-WINDOW FILTER ===
                             last_time = last_recorded_timestamps.get(name, -999.0)
                             if (timestamp_sec - last_time) > 2.5:
                                 total_damage_accumulated[name] = total_damage_accumulated.get(name, 0) + 1
                                 last_recorded_timestamps[name] = timestamp_sec
-
+                                
                         if "FP32" in model_type:
                             pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                             p1, p2, p3 = generate_integrated_gradcam_triptych(pil_frame, results)
