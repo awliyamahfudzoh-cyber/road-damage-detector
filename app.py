@@ -363,7 +363,7 @@ elif input_type == "Studio Pemantauan Video (Timeline Mode)":
                     boxes = results[0].boxes
                     timestamp_sec = processed_frames / fps
 
-                   if boxes is not None and len(boxes) > 0:
+                    if boxes is not None and len(boxes) > 0:
                         class_names = results[0].names
                         frame_damages = []
                         
